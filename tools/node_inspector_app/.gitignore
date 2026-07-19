@@ -1,0 +1,13 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+windows/
+*.iml
+*.log
+
+# Local application data and imported node credentials.
+data/
+*.node-inspector.json

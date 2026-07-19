@@ -1,0 +1,60 @@
+name: Node Inspector Windows
+
+on:
+  push:
+    branches:
+      - feature/node-inspector-app
+    paths:
+      - tools/node_inspector_app/**
+      - .github/workflows/node-inspector-windows.yml
+  pull_request:
+    paths:
+      - tools/node_inspector_app/**
+      - .github/workflows/node-inspector-windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-test-build:
+    name: Analyze, test, and build Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/node_inspector_app
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.35.3
+          channel: stable
+          cache: true
+
+      - name: Generate standard Windows runner
+        run: flutter create --platforms=windows --project-name=node_inspector_app --org=io.nainiugg --no-pub .
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Test
+        run: flutter test --reporter=expanded
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Upload Windows application
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-inspector-windows
+          path: tools/node_inspector_app/build/windows/x64/runner/Release/**
+          if-no-files-found: error
+          retention-days: 14
