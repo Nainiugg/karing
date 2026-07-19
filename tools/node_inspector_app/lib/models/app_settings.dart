@@ -16,9 +16,9 @@ class AppSettings {
     final Object? rawEndpoints = json['geoEndpoints'];
     return AppSettings(
       concurrency:
-          ((json['concurrency'] as num?)?.round() ?? 4).clamp(1, 32) as int,
+          ((json['concurrency'] as num?)?.round() ?? 4).clamp(1, 32),
       timeoutSeconds: ((json['timeoutSeconds'] as num?)?.round() ?? 12)
-          .clamp(3, 120) as int,
+          .clamp(3, 120),
       geoEndpoints: rawEndpoints is List<Object?>
           ? rawEndpoints.whereType<String>().toList(growable: false)
           : const <String>[
