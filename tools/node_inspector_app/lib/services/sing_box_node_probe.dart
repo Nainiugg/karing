@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
@@ -227,6 +228,16 @@ class SingBoxNodeProbe implements NodeProbe {
         'final': _targetTag,
       },
     };
+  }
+
+  @visibleForTesting
+  static Map<String, Object?> buildConfigurationForTesting(
+    NodeRecord node,
+    List<NodeRecord> allNodes, {
+    int port = 18888,
+    String bindAddress = '',
+  }) {
+    return _buildConfig(node, allNodes, port, bindAddress);
   }
 
   static NodeRecord? _dependencyFor(
