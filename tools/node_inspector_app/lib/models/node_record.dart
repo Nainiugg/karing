@@ -64,6 +64,9 @@ class NodeRecord {
     NodeTestResult? result,
     String? exportedName,
     String? error,
+    bool clearResult = false,
+    bool clearExportedName = false,
+    bool clearError = false,
   }) {
     return NodeRecord(
       id: id,
@@ -75,9 +78,10 @@ class NodeRecord {
       fingerprint: fingerprint,
       importedAt: importedAt,
       status: status ?? this.status,
-      result: result ?? this.result,
-      exportedName: exportedName ?? this.exportedName,
-      error: error ?? this.error,
+      result: clearResult ? null : result ?? this.result,
+      exportedName:
+          clearExportedName ? null : exportedName ?? this.exportedName,
+      error: clearError ? null : error ?? this.error,
     );
   }
 

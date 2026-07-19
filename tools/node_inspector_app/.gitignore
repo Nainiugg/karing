@@ -7,6 +7,8 @@ coverage/
 windows/
 *.iml
 *.log
+assets/core/sing-box.exe
+assets/core/libcronet.dll
 
 # Local application data and imported node credentials.
 data/

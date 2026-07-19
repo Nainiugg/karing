@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../controllers/app_controller.dart';
@@ -16,19 +18,38 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late int _concurrency;
   late int _timeoutSeconds;
+  late final TextEditingController _bindAddressController;
 
   @override
   void initState() {
     super.initState();
     _concurrency = widget.controller.settings.concurrency;
     _timeoutSeconds = widget.controller.settings.timeoutSeconds;
+    _bindAddressController = TextEditingController(
+      text: widget.controller.settings.bindAddress,
+    );
+  }
+
+  @override
+  void dispose() {
+    _bindAddressController.dispose();
+    super.dispose();
   }
 
   Future<void> _save() async {
+    final String bindAddress = _bindAddressController.text.trim();
+    if (bindAddress.isNotEmpty &&
+        InternetAddress.tryParse(bindAddress)?.type != InternetAddressType.IPv4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('物理出口地址必须是有效的 IPv4 地址')),
+      );
+      return;
+    }
     await widget.controller.updateSettings(
       widget.controller.settings.copyWith(
         concurrency: _concurrency,
         timeoutSeconds: _timeoutSeconds,
+        bindAddress: bindAddress,
       ),
     );
     if (!mounted) {
@@ -103,6 +124,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setState(() => _timeoutSeconds = value.round());
                         },
                       ),
+                      const SizedBox(height: 18),
+                      TextField(
+                        controller: _bindAddressController,
+                        decoration: const InputDecoration(
+                          labelText: '物理出口网卡 IPv4（可选）',
+                          hintText: '例如 192.168.1.20；留空时自动检测',
+                          helperText: '自动识别错误或存在多个网卡时，填写当前 Wi-Fi/以太网的本机 IPv4。',
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -129,20 +159,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(22),
+                  padding: const EdgeInsets.all(22),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
+                      const Text(
                         '关于 Node Inspector',
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                       ),
-                      SizedBox(height: 10),
-                      Text('版本 0.1.0 · 第一阶段应用骨架'),
-                      SizedBox(height: 4),
-                      Text(
+                      const SizedBox(height: 10),
+                      const Text('版本 0.4.0 · 导入、检测、命名与 Karing 导出'),
+                      const SizedBox(height: 4),
+                      const Text('隔离核心：sing-box 1.13.14，运行时进行 SHA-256 校验。'),
+                      const SizedBox(height: 4),
+                      Text('当前出口绑定：${widget.controller.bindingDescription}'),
+                      const SizedBox(height: 4),
+                      const Text(
                         '这是基于 GPLv3 代码生态开发的独立工具，不使用 Karing 名称作为应用品牌，也不暗示官方关联。',
                       ),
                     ],

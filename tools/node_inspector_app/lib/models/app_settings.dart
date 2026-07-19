@@ -2,6 +2,7 @@ class AppSettings {
   const AppSettings({
     this.concurrency = 4,
     this.timeoutSeconds = 12,
+    this.bindAddress = '',
     this.geoEndpoints = const <String>[
       'https://api.ip.sb/geoip',
       'https://ipwho.is/',
@@ -10,6 +11,7 @@ class AppSettings {
 
   final int concurrency;
   final int timeoutSeconds;
+  final String bindAddress;
   final List<String> geoEndpoints;
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -19,6 +21,7 @@ class AppSettings {
           ((json['concurrency'] as num?)?.round() ?? 4).clamp(1, 32),
       timeoutSeconds: ((json['timeoutSeconds'] as num?)?.round() ?? 12)
           .clamp(3, 120),
+      bindAddress: json['bindAddress'] as String? ?? '',
       geoEndpoints: rawEndpoints is List<Object?>
           ? rawEndpoints.whereType<String>().toList(growable: false)
           : const <String>[
@@ -28,10 +31,15 @@ class AppSettings {
     );
   }
 
-  AppSettings copyWith({int? concurrency, int? timeoutSeconds}) {
+  AppSettings copyWith({
+    int? concurrency,
+    int? timeoutSeconds,
+    String? bindAddress,
+  }) {
     return AppSettings(
       concurrency: concurrency ?? this.concurrency,
       timeoutSeconds: timeoutSeconds ?? this.timeoutSeconds,
+      bindAddress: bindAddress ?? this.bindAddress,
       geoEndpoints: geoEndpoints,
     );
   }
@@ -40,6 +48,7 @@ class AppSettings {
     return <String, Object?>{
       'concurrency': concurrency,
       'timeoutSeconds': timeoutSeconds,
+      'bindAddress': bindAddress,
       'geoEndpoints': geoEndpoints,
     };
   }

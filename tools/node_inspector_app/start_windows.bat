@@ -6,17 +6,21 @@ title Node Inspector
 where flutter >nul 2>nul
 if errorlevel 1 goto :flutter_missing
 
+echo [1/4] Preparing the verified isolated scan core...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0prepare_core_windows.ps1"
+if errorlevel 1 goto :failed
+
 if not exist "windows\runner\main.cpp" (
-  echo [1/3] Preparing the standard Windows runner...
+  echo [2/4] Preparing the standard Windows runner...
   call flutter create --platforms=windows --project-name=node_inspector_app --org=io.nainiugg --no-pub .
   if errorlevel 1 goto :failed
 )
 
-echo [2/3] Resolving Flutter dependencies...
+echo [3/4] Resolving Flutter dependencies...
 call flutter pub get
 if errorlevel 1 goto :failed
 
-echo [3/3] Starting Node Inspector...
+echo [4/4] Starting Node Inspector...
 call flutter run -d windows
 if errorlevel 1 goto :failed
 exit /b 0

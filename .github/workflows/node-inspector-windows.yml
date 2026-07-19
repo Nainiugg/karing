@@ -41,6 +41,12 @@ jobs:
       - name: Generate standard Windows runner
         run: flutter create --platforms=windows --project-name=node_inspector_app --org=io.nainiugg --no-pub .
 
+      - name: Download and verify isolated scan core
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File prepare_core_windows.ps1
+
+      - name: Verify isolated scan core starts
+        run: assets/core/sing-box.exe version
+
       - name: Resolve dependencies
         run: flutter pub get
 

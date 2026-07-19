@@ -6,6 +6,9 @@ title Build Node Inspector
 where flutter >nul 2>nul
 if errorlevel 1 goto :flutter_missing
 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0prepare_core_windows.ps1"
+if errorlevel 1 goto :failed
+
 if not exist "windows\runner\main.cpp" (
   call flutter create --platforms=windows --project-name=node_inspector_app --org=io.nainiugg --no-pub .
   if errorlevel 1 goto :failed

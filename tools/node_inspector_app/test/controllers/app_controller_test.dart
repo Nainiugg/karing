@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:node_inspector_app/controllers/app_controller.dart';
 import 'package:node_inspector_app/models/node_record.dart';
 import 'package:node_inspector_app/models/node_status.dart';
+import 'package:node_inspector_app/models/node_test_result.dart';
+import 'package:node_inspector_app/models/app_settings.dart';
+import 'package:node_inspector_app/services/node_probe.dart';
 import 'package:node_inspector_app/storage/app_store.dart';
 
 NodeRecord _node(String id, NodeStatus status) {
@@ -47,4 +50,50 @@ void main() {
     controller.selectPage(9);
     expect(controller.pageIndex, 2);
   });
+
+  test('scan records real probe values and assigns export names', () async {
+    final AppController controller = AppController(
+      store: MemoryAppStore(),
+      probe: _FakeProbe(),
+    );
+    await controller.initialize();
+    await controller.replaceNodes(<NodeRecord>[
+      _node('1', NodeStatus.queued),
+      _node('2', NodeStatus.queued),
+    ]);
+
+    await controller.scanAll();
+
+    expect(controller.counters.usable, 2);
+    expect(controller.nodes.first.result?.exitIp, '198.51.100.8');
+    expect(controller.nodes.first.exportedName, '新加坡-198.51.100.8');
+    expect(controller.nodes.last.exportedName, '新加坡-198.51.100.8-2');
+    expect(controller.pageIndex, 2);
+  });
+}
+
+class _FakeProbe implements NodeProbe {
+  @override
+  String get bindingDescription => 'test';
+
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  Future<void> prepare(AppSettings settings) async {}
+
+  @override
+  Future<NodeTestResult> probe(
+    NodeRecord node,
+    List<NodeRecord> allNodes,
+    AppSettings settings,
+  ) async {
+    return NodeTestResult(
+      checkedAt: DateTime.utc(2026),
+      exitIp: '198.51.100.8',
+      country: '新加坡',
+      countryCode: 'SG',
+      latencyMs: 42,
+    );
+  }
 }

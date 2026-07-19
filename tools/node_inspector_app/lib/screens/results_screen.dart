@@ -1,16 +1,93 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/app_controller.dart';
 import '../models/node_record.dart';
+import '../models/node_status.dart';
 import '../widgets/page_header.dart';
 
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   const ResultsScreen({required this.controller, super.key});
 
   final AppController controller;
 
   @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  String _query = '';
+  NodeStatus? _status;
+
+  Future<void> _export() async {
+    try {
+      final String contents = widget.controller.buildKaringExport();
+      const XTypeGroup jsonType = XTypeGroup(
+        label: 'sing-box JSON',
+        extensions: <String>['json'],
+      );
+      final String date = DateTime.now().toIso8601String().substring(0, 10);
+      final FileSaveLocation? location = await getSaveLocation(
+        suggestedName: 'karing-usable-nodes-$date.json',
+        acceptedTypeGroups: const <XTypeGroup>[jsonType],
+      );
+      if (location == null) return;
+      await File(location.path).writeAsString(contents, flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Karing 配置已导出到 ${location.path}')),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  Future<void> _clear() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('清空全部节点？'),
+        content: const Text('这会删除本机保存的导入内容和检测结果，无法撤销。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await widget.controller.clearNodes();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final String query = _query.toLowerCase();
+    final List<NodeRecord> filtered = widget.controller.nodes.where((NodeRecord node) {
+      if (_status != null && node.status != _status) return false;
+      if (query.isEmpty) return true;
+      return <String?>[
+        node.originalName,
+        node.exportedName,
+        node.protocol,
+        node.result?.exitIp,
+        node.result?.country,
+        node.result?.organization,
+      ].whereType<String>().any((String value) => value.toLowerCase().contains(query));
+    }).toList(growable: false);
+    final List<NodeRecord> visible = filtered.take(200).toList(growable: false);
+
     return Padding(
       padding: const EdgeInsets.all(28),
       child: Align(
@@ -22,32 +99,75 @@ class ResultsScreen extends StatelessWidget {
             children: <Widget>[
               PageHeader(
                 title: '检测结果',
-                description: '查看真实出口、国家和延迟；只有可用节点会进入最终导出。',
+                description: '可用节点已按“国家-真实出口IP”命名，导出只包含可用节点和必要依赖。',
                 trailing: Wrap(
                   spacing: 10,
                   children: <Widget>[
                     OutlinedButton.icon(
-                      onPressed: controller.nodes.isEmpty
+                      onPressed: widget.controller.nodes.isEmpty ||
+                              widget.controller.scanning
                           ? null
-                          : () => controller.clearNodes(),
+                          : _clear,
                       icon: const Icon(Icons.delete_outline_rounded),
                       label: const Text('清空'),
                     ),
                     FilledButton.icon(
-                      onPressed: null,
+                      onPressed: widget.controller.counters.usable == 0
+                          ? null
+                          : _export,
                       icon: const Icon(Icons.file_download_outlined),
-                      label: const Text('导出 Karing 配置（第四阶段）'),
+                      label: const Text('导出 Karing 配置'),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 18),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: '搜索名称、协议、国家、IP、运营商',
+                        prefixIcon: Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (String value) => setState(() => _query = value),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 180,
+                    child: DropdownButtonFormField<NodeStatus?>(
+                      initialValue: _status,
+                      decoration: const InputDecoration(labelText: '状态'),
+                      items: <DropdownMenuItem<NodeStatus?>>[
+                        const DropdownMenuItem<NodeStatus?>(
+                          child: Text('全部'),
+                        ),
+                        ...NodeStatus.values.map(
+                          (NodeStatus status) => DropdownMenuItem<NodeStatus?>(
+                            value: status,
+                            child: Text(status.label),
+                          ),
+                        ),
+                      ],
+                      onChanged: (NodeStatus? value) => setState(() => _status = value),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                filtered.length > 200
+                    ? '符合条件 ${filtered.length} 个，为保持流畅当前显示前 200 个；可继续使用搜索缩小范围。'
+                    : '符合条件 ${filtered.length} 个',
+              ),
+              const SizedBox(height: 10),
               Expanded(
                 child: Card(
                   clipBehavior: Clip.antiAlias,
-                  child: controller.nodes.isEmpty
+                  child: visible.isEmpty
                       ? const _EmptyResults()
-                      : _ResultsTable(nodes: controller.nodes),
+                      : _ResultsTable(nodes: visible),
                 ),
               ),
             ],
@@ -71,9 +191,9 @@ class _EmptyResults extends StatelessWidget {
           children: <Widget>[
             Icon(Icons.inbox_outlined, size: 56),
             SizedBox(height: 14),
-            Text('还没有节点结果'),
+            Text('没有符合条件的节点'),
             SizedBox(height: 6),
-            Text('完成导入和检测后，节点会显示在这里。'),
+            Text('请先导入并检测，或修改上方筛选条件。'),
           ],
         ),
       ),
@@ -102,6 +222,7 @@ class _ResultsTable extends StatelessWidget {
               DataColumn(label: Text('国家')),
               DataColumn(label: Text('ASN / 运营商')),
               DataColumn(label: Text('延迟')),
+              DataColumn(label: Text('错误')),
             ],
             rows: nodes
                 .map(
@@ -126,6 +247,12 @@ class _ResultsTable extends StatelessWidget {
                           node.result?.latencyMs != null
                               ? '${node.result!.latencyMs} ms'
                               : '—',
+                        ),
+                      ),
+                      DataCell(
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 340),
+                          child: Text(node.error ?? node.result?.error ?? '—'),
                         ),
                       ),
                     ],

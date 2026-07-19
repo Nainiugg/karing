@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'controllers/app_controller.dart';
+import 'services/sing_box_node_probe.dart';
 import 'storage/app_store.dart';
 
 Future<void> main() async {
@@ -9,6 +10,7 @@ Future<void> main() async {
 
   final AppController controller = AppController(
     store: LocalJsonAppStore(LocalJsonAppStore.defaultFile()),
+    probe: SingBoxNodeProbe(),
   );
   await controller.initialize();
 

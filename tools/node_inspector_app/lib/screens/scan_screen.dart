@@ -4,13 +4,45 @@ import '../controllers/app_controller.dart';
 import '../widgets/metric_card.dart';
 import '../widgets/page_header.dart';
 
-class ScanScreen extends StatelessWidget {
+class ScanScreen extends StatefulWidget {
   const ScanScreen({required this.controller, super.key});
 
   final AppController controller;
 
   @override
+  State<ScanScreen> createState() => _ScanScreenState();
+}
+
+class _ScanScreenState extends State<ScanScreen> {
+  Future<void> _start() async {
+    try {
+      await widget.controller.scanAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '检测完成：可用 ${widget.controller.counters.usable}，失败 ${widget.controller.counters.failed}',
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  Future<void> _stop() async {
+    await widget.controller.cancelScan();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final AppController controller = widget.controller;
     final NodeCounters counters = controller.counters;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -23,12 +55,20 @@ class ScanScreen extends StatelessWidget {
             children: <Widget>[
               PageHeader(
                 title: '检测节点',
-                description: '每个节点将在独立核心中切换和探测，不修改 Karing 当前连接。',
-                trailing: FilledButton.icon(
-                  onPressed: null,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('检测核心将在第三阶段接入'),
-                ),
+                description: '每个节点在独立 sing-box 进程中探测，不切换 Karing 当前节点。',
+                trailing: controller.scanning
+                    ? FilledButton.icon(
+                        onPressed: _stop,
+                        icon: const Icon(Icons.stop_rounded),
+                        label: const Text('停止检测'),
+                      )
+                    : FilledButton.icon(
+                        onPressed: controller.nodes.isEmpty || controller.busy
+                            ? null
+                            : _start,
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('检测全部节点'),
+                      ),
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
@@ -83,15 +123,37 @@ class ScanScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        '隔离检测队列',
-                        style: Theme.of(context).textTheme.titleLarge,
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              controller.scanning ? '正在隔离检测' : '隔离检测队列',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                          Text(
+                            '${controller.scanCompleted} / ${controller.scanTotal}',
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 14),
-                      const LinearProgressIndicator(value: 0),
+                      LinearProgressIndicator(
+                        value: controller.scanning || controller.scanTotal > 0
+                            ? controller.scanProgress
+                            : 0,
+                      ),
                       const SizedBox(height: 14),
-                      const Text(
-                        '等待节点导入。后续检测流程会先校验配置，再以受限并发逐个启动、查询真实出口、停止并清理实例。',
+                      Text(
+                        controller.scanning
+                            ? '当前：${controller.currentNode}'
+                            : controller.nodes.isEmpty
+                                ? '等待节点导入。'
+                                : '准备检测 ${controller.nodes.length} 个节点。',
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        controller.bindingDescription,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -109,7 +171,7 @@ class ScanScreen extends StatelessWidget {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '“可用”只表示测试时能够连接并取得真实出口信息，不代表节点长期稳定、住宅属性或信誉质量。',
+                          '程序会校验配置、分配独立本机端口、查询真实出口后立即停止进程。“可用”只表示本次测试成功，不代表长期稳定或住宅属性。',
                         ),
                       ),
                     ],

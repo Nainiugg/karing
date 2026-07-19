@@ -19,6 +19,8 @@ class NodeTestResult {
   final int? latencyMs;
   final String? error;
 
+  bool get isUsable => exitIp != null && exitIp!.isNotEmpty && error == null;
+
   factory NodeTestResult.fromJson(Map<String, Object?> json) {
     return NodeTestResult(
       checkedAt: DateTime.tryParse(json['checkedAt'] as String? ?? '') ??
