@@ -181,6 +181,8 @@ class AppController extends ChangeNotifier {
         nodes: added,
         issues: parsed.issues,
         duplicates: parsed.duplicates + parsed.nodes.length - added.length,
+        candidates: parsed.candidates,
+        filteredNoise: parsed.filteredNoise,
       );
       _lastImportReport = report;
       await _saveSnapshot();

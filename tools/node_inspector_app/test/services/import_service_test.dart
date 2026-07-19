@@ -73,6 +73,50 @@ trojan://test@example.invalid:443?sni=example.invalid#second
     expect(report.nodes.single.originalName, 'Tokyo');
   });
 
+  test('extracts nodes from noisy webpage text and filters ordinary URLs', () {
+    const String text = r'''
+抓取来源：https://example.com/articles/free-nodes.html
+更新时间、客户端教程和其他网页说明。
+<div>节点一：[复制](vless：／／00000000-0000-0000-0000-000000000001@example .invalid:443?security=tls&amp;sni=example.invalid#Tokyo)</div>
+普通下载：https://example.com:8443/download/client
+"trojan:\/\/pass word@example.invalid:443?security=tls\u0026sni=example.invalid#Singapore",
+代理：http://192.0.2.8:8080#HTTP
+''';
+
+    final report = importer.parse(text, sourceId: 'web-noise-test');
+
+    expect(report.format, '网页文本 / 分享链接');
+    expect(report.candidates, 3);
+    expect(report.nodes, hasLength(3));
+    expect(report.nodes.map((node) => node.protocol),
+        <String>['vless', 'trojan', 'http']);
+    expect(report.filteredNoise, greaterThanOrEqualTo(3));
+    expect(report.issues, isEmpty);
+    expect(report.nodes.first.normalizedConfig['server'], 'example.invalid');
+    expect(report.nodes[1].normalizedConfig['password'], 'password');
+  });
+
+  test('extracts multiple share links embedded on one line', () {
+    const String text =
+        '可用节点 vless://00000000-0000-0000-0000-000000000001@one.invalid:443?security=tls#one | trojan://test@two.invalid:443?sni=two.invalid#two 点击复制';
+
+    final report = importer.parse(text, sourceId: 'inline-web-test');
+
+    expect(report.nodes, hasLength(2));
+    expect(report.nodes.first.protocol, 'vless');
+    expect(report.nodes.last.protocol, 'trojan');
+  });
+
+  test('does not mistake a normal HTTPS webpage for a proxy node', () {
+    expect(
+      () => importer.parse(
+        '教程：https://example.com:8443/download/client',
+        sourceId: 'webpage-only',
+      ),
+      throwsA(isA<NodeImportException>()),
+    );
+  });
+
   test('reports unsupported input instead of fabricating nodes', () {
     expect(
       () => importer.parse('not a proxy configuration', sourceId: 'bad'),

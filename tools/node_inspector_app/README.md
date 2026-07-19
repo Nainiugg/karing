@@ -2,11 +2,13 @@
 
 Node Inspector 是一个独立的 Windows Flutter 应用，用于把来源混杂的代理节点导入、隔离检测，并导出可供 Karing 使用的 sing-box JSON 配置。
 
-当前版本：`0.4.0`。第二至第四阶段已经接入：多格式导入、真实出口检测、自动重命名和 Karing 配置导出。
+当前版本：`0.5.0`。第二至第四阶段已经接入，并增加网页乱文本自动筛选：多格式导入、真实出口检测、自动重命名和 Karing 配置导出。
 
 ## 已实现功能
 
 - 从订阅 URL、本地文件或粘贴文本导入节点；
+- 从整页网页复制内容中定位分享链接，过滤普通网页 URL、参数说明和无关文本；
+- 修复常见 HTML 实体、JSON 转义斜杠、全角冒号、零宽字符、链接内错误空格和查询参数断行；
 - 识别 Clash / Mihomo YAML、sing-box JSON、整段 Base64 订阅和常见分享链接；
 - 按连接参数生成 SHA-256 指纹，在单次导入和工作区合并时去重；
 - 保存 `detour` / `dialer-proxy` 依赖，检测和导出时自动带上依赖节点；
@@ -65,7 +67,7 @@ build\windows\x64\runner\Release
 | Clash / Mihomo YAML | 读取 `proxies` 并映射常用字段、TLS、WebSocket/gRPC 等传输设置 |
 | Base64 订阅 | 自动补齐 Base64 padding，解码后再次识别 JSON、YAML 或分享链接 |
 | 分享链接 | SS、VMess、VLESS、Trojan、Hysteria/Hysteria2、TUIC、SOCKS、HTTP/HTTPS、AnyTLS |
-| 抓取文本 | 自动合并被网页换行拆开的分享链接，再逐项解析 |
+| 抓取文本 | 从任意位置提取候选节点，过滤普通网页地址和说明文字，并修复常见转义、空格及查询参数断行 |
 
 不能安全转换的协议或字段会显示在导入报告中，不会伪装成已导入节点。原始凭据不会写入检测错误提示或应用日志。
 

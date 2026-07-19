@@ -70,8 +70,10 @@ class _ImportScreenState extends State<ImportScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text('识别格式：${report.format}'),
+                Text('识别候选：${report.candidates}'),
                 Text('新增节点：${report.imported}'),
                 Text('重复跳过：${report.duplicates}'),
+                Text('自动过滤网页噪声：${report.filteredNoise}'),
                 Text('无法导入：${report.issues.length}'),
                 if (report.issues.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 12),
@@ -127,7 +129,7 @@ class _ImportScreenState extends State<ImportScreen> {
             children: <Widget>[
               PageHeader(
                 title: '导入节点',
-                description: '支持订阅 URL、Clash YAML、sing-box JSON、Base64 和常见分享链接。',
+                description: '自动筛选网页乱文本，也支持订阅 URL、YAML、JSON、Base64 和分享链接。',
                 trailing: Chip(
                   avatar: const Icon(Icons.hub_outlined, size: 18),
                   label: Text('当前 ${widget.controller.nodes.length} 个节点'),
@@ -183,7 +185,7 @@ class _ImportScreenState extends State<ImportScreen> {
                         maxLines: 14,
                         decoration: const InputDecoration(
                           alignLabelWithHint: true,
-                          hintText: '每行一个分享链接，或粘贴完整 Base64、JSON、YAML 内容。',
+                          hintText: '可直接粘贴整页乱文本；程序会自动提取真正的节点并过滤说明文字和普通网页地址。',
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -214,7 +216,7 @@ class _ImportScreenState extends State<ImportScreen> {
                     leading: const Icon(Icons.summarize_outlined),
                     title: Text('最近导入：${report.format}'),
                     subtitle: Text(
-                      '新增 ${report.imported} · 重复 ${report.duplicates} · 无法导入 ${report.issues.length}',
+                      '候选 ${report.candidates} · 新增 ${report.imported} · 重复 ${report.duplicates} · 过滤噪声 ${report.filteredNoise} · 无法导入 ${report.issues.length}',
                     ),
                   ),
                 ),

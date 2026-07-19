@@ -170,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 10),
-                      const Text('版本 0.4.0 · 导入、检测、命名与 Karing 导出'),
+                      const Text('版本 0.5.0 · 网页节点筛选、检测、命名与 Karing 导出'),
                       const SizedBox(height: 4),
                       const Text('隔离核心：sing-box 1.13.14，运行时进行 SHA-256 校验。'),
                       const SizedBox(height: 4),

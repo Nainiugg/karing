@@ -60,7 +60,7 @@ class ImportService {
     final HttpClient client = HttpClient()
       ..connectionTimeout = timeout
       ..idleTimeout = timeout
-      ..userAgent = 'NodeInspector/0.4.0';
+      ..userAgent = 'NodeInspector/0.5.0';
     try {
       final HttpClientRequest request = await client.getUrl(uri).timeout(timeout);
       request.headers.set(HttpHeaders.acceptHeader, '*/*');
@@ -94,16 +94,20 @@ class ImportService {
     final List<ImportIssue> issues = <ImportIssue>[];
     List<_ParsedNode> parsed = <_ParsedNode>[];
     String format = '分享链接';
+    int candidates = 0;
+    int filteredNoise = 0;
 
     final Object? jsonValue = _tryJson(input);
     if (jsonValue != null) {
       format = 'sing-box / JSON';
       parsed = _parseContainer(jsonValue, issues);
+      candidates = parsed.length + issues.length;
     } else {
       final Object? yamlValue = _tryYaml(input);
       if (_hasProxyContainer(yamlValue)) {
         format = 'Clash / YAML';
         parsed = _parseContainer(yamlValue, issues);
+        candidates = parsed.length + issues.length;
       } else {
         final String? decoded = _tryDecodeSubscription(input);
         if (decoded != null) {
@@ -112,13 +116,22 @@ class ImportService {
           final Object? decodedYaml = _tryYaml(decoded);
           if (decodedJson != null) {
             parsed = _parseContainer(decodedJson, issues);
+            candidates = parsed.length + issues.length;
           } else if (_hasProxyContainer(decodedYaml)) {
             parsed = _parseContainer(decodedYaml, issues);
+            candidates = parsed.length + issues.length;
           } else {
-            parsed = _parseShareLinks(decoded, issues);
+            final _ShareParseResult result = _parseShareLinks(decoded, issues);
+            parsed = result.nodes;
+            candidates = result.candidates;
+            filteredNoise = result.filteredNoise;
           }
         } else {
-          parsed = _parseShareLinks(input, issues);
+          final _ShareParseResult result = _parseShareLinks(input, issues);
+          parsed = result.nodes;
+          candidates = result.candidates;
+          filteredNoise = result.filteredNoise;
+          if (filteredNoise > 0) format = '网页文本 / 分享链接';
         }
       }
     }
@@ -157,6 +170,8 @@ class ImportService {
       nodes: nodes,
       issues: issues,
       duplicates: duplicates,
+      candidates: candidates,
+      filteredNoise: filteredNoise,
     );
   }
 
@@ -339,11 +354,12 @@ class ImportService {
     );
   }
 
-  List<_ParsedNode> _parseShareLinks(
+  _ShareParseResult _parseShareLinks(
     String input,
     List<ImportIssue> issues,
   ) {
-    final List<String> links = _coalescedLinkLines(input);
+    final _LinkExtraction extraction = _extractLinks(input);
+    final List<String> links = extraction.links;
     final List<_ParsedNode> result = <_ParsedNode>[];
     for (int index = 0; index < links.length; index += 1) {
       final String link = links[index];
@@ -360,7 +376,11 @@ class ImportService {
         issues.add(const ImportIssue(message: '分享链接格式损坏或包含无效转义'));
       }
     }
-    return result;
+    return _ShareParseResult(
+      nodes: result,
+      candidates: links.length,
+      filteredNoise: extraction.filteredNoise,
+    );
   }
 
   _ParsedNode _parseShareLink(String link, int index) {
@@ -681,28 +701,135 @@ class ImportService {
     config['server_port'] = port;
   }
 
-  static List<String> _coalescedLinkLines(String input) {
+  static _LinkExtraction _extractLinks(String input) {
+    final String normalized = _normalizeScrapedText(input);
     final List<String> result = <String>[];
     String current = '';
-    for (final String raw in input.split(RegExp(r'[\r\n]+'))) {
+    int filteredNoise = 0;
+
+    void flush() {
+      if (current.isEmpty) return;
+      final String candidate = _cleanCandidate(current);
+      if (_isLikelyProxyLink(candidate)) {
+        result.add(candidate);
+      } else {
+        filteredNoise += 1;
+      }
+      current = '';
+    }
+
+    final RegExp startPattern = RegExp(
+      r'(?:ss|vmess|vless|trojan|hysteria|hysteria2|hy2|tuic|socks|socks5|http|https|anytls)\s*:\s*//',
+      caseSensitive: false,
+    );
+    for (final String raw in normalized.split(RegExp(r'[\r\n]+'))) {
       final String line = raw.trim();
-      if (line.isEmpty || line.startsWith('#')) continue;
-      final bool beginsLink = _shareSchemes.any(
-        (String scheme) => line.toLowerCase().startsWith('$scheme://'),
-      );
-      if (beginsLink) {
-        if (current.isNotEmpty) result.add(current);
-        current = line;
-      } else if (current.isNotEmpty &&
-          (current.endsWith('?') || line.contains('=') || line.startsWith('&'))) {
+      if (line.isEmpty) continue;
+      final List<RegExpMatch> starts = startPattern
+          .allMatches(line)
+          .where(
+            (RegExpMatch match) =>
+                match.start == 0 ||
+                !RegExp(r'[A-Za-z0-9_=&/?]').hasMatch(
+                  line.substring(match.start - 1, match.start),
+                ),
+          )
+          .toList();
+      if (starts.isNotEmpty) {
+        flush();
+        for (int index = 0; index < starts.length; index += 1) {
+          final int end = index + 1 < starts.length
+              ? starts[index + 1].start
+              : line.length;
+          current = line.substring(starts[index].start, end);
+          if (index + 1 < starts.length) flush();
+        }
+      } else if (current.isNotEmpty && _looksLikeContinuation(current, line)) {
         current += line;
       } else {
-        if (current.isNotEmpty) result.add(current);
-        current = line;
+        flush();
+        if (!line.startsWith('#')) filteredNoise += 1;
       }
     }
-    if (current.isNotEmpty) result.add(current);
+    flush();
+    return _LinkExtraction(links: result, filteredNoise: filteredNoise);
+  }
+
+  static String _normalizeScrapedText(String input) {
+    String value = input
+        .replaceAll('\ufeff', '')
+        .replaceAll('\u200b', '')
+        .replaceAll('\u200c', '')
+        .replaceAll('\u200d', '')
+        .replaceAll('\u2060', '')
+        .replaceAll('：', ':')
+        .replaceAll('／', '/')
+        .replaceAll(r'\/', '/')
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'</(?:p|div|li|tr)>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<[^>]{1,1000}>'), ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll(r'\u0026', '&')
+        .replaceAll(r'\u003d', '=')
+        .replaceAll(r'\u003f', '?')
+        .replaceAll(r'\u0023', '#');
+    value = value.replaceAllMapped(
+      RegExp(r'&#(?:x([0-9a-fA-F]{1,6})|([0-9]{1,7}));'),
+      (Match match) {
+        final int? code = int.tryParse(
+          match.group(1) ?? match.group(2) ?? '',
+          radix: match.group(1) == null ? 10 : 16,
+        );
+        return code == null || code > 0x10ffff
+            ? match.group(0)!
+            : String.fromCharCode(code);
+      },
+    );
+    return value;
+  }
+
+  static bool _looksLikeContinuation(String current, String line) {
+    if (current.endsWith('?') ||
+        current.endsWith('&') ||
+        line.startsWith('?') ||
+        line.startsWith('&')) {
+      return true;
+    }
+    if (RegExp(r'^[A-Za-z][A-Za-z0-9_-]{0,30}=').hasMatch(line)) {
+      return true;
+    }
+    final String scheme = current.split(':').first.toLowerCase();
+    return <String>{'vmess', 'ss'}.contains(scheme) &&
+        RegExp(r'^[A-Za-z0-9_+/=-]+$').hasMatch(line);
+  }
+
+  static String _cleanCandidate(String value) {
+    String result = value.trim();
+    final int boundary = result.indexOf(RegExp(r'["<>]'));
+    if (boundary >= 0) result = result.substring(0, boundary);
+    result = result.replaceAll(RegExp(r'\s+'), '');
+    result = result.replaceFirstMapped(
+      RegExp(r'^([A-Za-z0-9]+):/+'),
+      (Match match) => '${match.group(1)!.toLowerCase()}://',
+    );
+    result = result.replaceAll(RegExp(r'''[\]\)},|]+$'''), '');
     return result;
+  }
+
+  static bool _isLikelyProxyLink(String value) {
+    if (value.isEmpty || !value.contains('://')) return false;
+    final String scheme = value.split(':').first.toLowerCase();
+    if (!_shareSchemes.contains(scheme)) return false;
+    if (scheme != 'http' && scheme != 'https') return true;
+    final Uri? uri = Uri.tryParse(value);
+    if (uri == null || uri.host.isEmpty || !uri.hasPort) return false;
+    return uri.path.isEmpty || uri.path == '/';
   }
 
   static String? _tryDecodeSubscription(String input) {
@@ -880,6 +1007,28 @@ class _ParsedNode {
   final String protocol;
   final Map<String, Object?> config;
   final List<String> dependencies;
+}
+
+class _ShareParseResult {
+  const _ShareParseResult({
+    required this.nodes,
+    required this.candidates,
+    required this.filteredNoise,
+  });
+
+  final List<_ParsedNode> nodes;
+  final int candidates;
+  final int filteredNoise;
+}
+
+class _LinkExtraction {
+  const _LinkExtraction({
+    required this.links,
+    required this.filteredNoise,
+  });
+
+  final List<String> links;
+  final int filteredNoise;
 }
 
 extension on String {
