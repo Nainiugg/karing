@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:node_inspector_app/controllers/app_controller.dart';
+import 'package:node_inspector_app/models/app_settings.dart';
 import 'package:node_inspector_app/models/node_record.dart';
 import 'package:node_inspector_app/models/node_status.dart';
 import 'package:node_inspector_app/models/node_test_result.dart';
-import 'package:node_inspector_app/models/app_settings.dart';
 import 'package:node_inspector_app/services/node_probe.dart';
 import 'package:node_inspector_app/storage/app_store.dart';
 
