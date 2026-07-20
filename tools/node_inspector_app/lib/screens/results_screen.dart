@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -7,6 +8,7 @@ import '../controllers/app_controller.dart';
 import '../models/node_record.dart';
 import '../models/node_status.dart';
 import '../widgets/page_header.dart';
+import 'node_details_screen.dart';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({required this.controller, super.key});
@@ -36,9 +38,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
       if (location == null) return;
       await File(location.path).writeAsString(contents, flush: true);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Karing 配置已导出到 ${location.path}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Karing 配置已导出到 ${location.path}')));
     } on Object catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,21 +73,42 @@ class _ResultsScreenState extends State<ResultsScreen> {
     if (confirmed == true) await widget.controller.clearNodes();
   }
 
+  void _openDetails(NodeRecord node) {
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) =>
+              NodeDetailsScreen(controller: widget.controller, nodeId: node.id),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final String query = _query.toLowerCase();
-    final List<NodeRecord> filtered = widget.controller.nodes.where((NodeRecord node) {
-      if (_status != null && node.status != _status) return false;
-      if (query.isEmpty) return true;
-      return <String?>[
-        node.originalName,
-        node.exportedName,
-        node.protocol,
-        node.result?.exitIp,
-        node.result?.country,
-        node.result?.organization,
-      ].whereType<String>().any((String value) => value.toLowerCase().contains(query));
-    }).toList(growable: false);
+    final List<NodeRecord> filtered = widget.controller.nodes
+        .where((NodeRecord node) {
+          if (_status != null && node.status != _status) return false;
+          if (query.isEmpty) return true;
+          return <String?>[
+            node.originalName,
+            node.exportedName,
+            node.protocol,
+            node.result?.exitIp,
+            node.result?.country,
+            node.result?.organization,
+            node.inspection?.ipv4?.ip,
+            node.inspection?.ipv6?.ip,
+            node.inspection?.ipv4?.organization,
+            node.inspection?.ipv6?.organization,
+            node.inspection?.ipv4?.isp,
+            node.inspection?.ipv6?.isp,
+          ].whereType<String>().any(
+            (String value) => value.toLowerCase().contains(query),
+          );
+        })
+        .toList(growable: false);
     final List<NodeRecord> visible = filtered.take(200).toList(growable: false);
 
     return Padding(
@@ -99,12 +122,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
             children: <Widget>[
               PageHeader(
                 title: '检测结果',
-                description: '可用节点已按“国家-真实出口IP”命名，导出只包含可用节点和必要依赖。',
+                description:
+                    '可用节点已按“国家-真实出口IP”命名；点击可用节点可继续检测 IPv4/IPv6 和参考纯净度。',
                 trailing: Wrap(
                   spacing: 10,
                   children: <Widget>[
                     OutlinedButton.icon(
-                      onPressed: widget.controller.nodes.isEmpty ||
+                      onPressed:
+                          widget.controller.nodes.isEmpty ||
                               widget.controller.scanning
                           ? null
                           : _clear,
@@ -130,7 +155,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         hintText: '搜索名称、协议、国家、IP、运营商',
                         prefixIcon: Icon(Icons.search_rounded),
                       ),
-                      onChanged: (String value) => setState(() => _query = value),
+                      onChanged: (String value) =>
+                          setState(() => _query = value),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -140,9 +166,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       initialValue: _status,
                       decoration: const InputDecoration(labelText: '状态'),
                       items: <DropdownMenuItem<NodeStatus?>>[
-                        const DropdownMenuItem<NodeStatus?>(
-                          child: Text('全部'),
-                        ),
+                        const DropdownMenuItem<NodeStatus?>(child: Text('全部')),
                         ...NodeStatus.values.map(
                           (NodeStatus status) => DropdownMenuItem<NodeStatus?>(
                             value: status,
@@ -150,7 +174,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           ),
                         ),
                       ],
-                      onChanged: (NodeStatus? value) => setState(() => _status = value),
+                      onChanged: (NodeStatus? value) =>
+                          setState(() => _status = value),
                     ),
                   ),
                 ],
@@ -167,7 +192,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: visible.isEmpty
                       ? const _EmptyResults()
-                      : _ResultsTable(nodes: visible),
+                      : _ResultsTable(
+                          nodes: visible,
+                          onOpenDetails: _openDetails,
+                        ),
                 ),
               ),
             ],
@@ -202,9 +230,10 @@ class _EmptyResults extends StatelessWidget {
 }
 
 class _ResultsTable extends StatelessWidget {
-  const _ResultsTable({required this.nodes});
+  const _ResultsTable({required this.nodes, required this.onOpenDetails});
 
   final List<NodeRecord> nodes;
+  final ValueChanged<NodeRecord> onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -213,6 +242,7 @@ class _ResultsTable extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: SingleChildScrollView(
           child: DataTable(
+            showCheckboxColumn: false,
             columns: const <DataColumn>[
               DataColumn(label: Text('状态')),
               DataColumn(label: Text('原名称')),
@@ -223,10 +253,14 @@ class _ResultsTable extends StatelessWidget {
               DataColumn(label: Text('ASN / 运营商')),
               DataColumn(label: Text('延迟')),
               DataColumn(label: Text('错误')),
+              DataColumn(label: Text('详细检测')),
             ],
             rows: nodes
                 .map(
                   (NodeRecord node) => DataRow(
+                    onSelectChanged: node.status == NodeStatus.usable
+                        ? (bool? _) => onOpenDetails(node)
+                        : null,
                     cells: <DataCell>[
                       DataCell(Text(node.status.label)),
                       DataCell(Text(node.originalName)),
@@ -253,6 +287,17 @@ class _ResultsTable extends StatelessWidget {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 340),
                           child: Text(node.error ?? node.result?.error ?? '—'),
+                        ),
+                      ),
+                      DataCell(
+                        IconButton(
+                          tooltip: node.status == NodeStatus.usable
+                              ? '打开 IPv4/IPv6 与纯净度检测'
+                              : '请先通过可用性检测',
+                          onPressed: node.status == NodeStatus.usable
+                              ? () => onOpenDetails(node)
+                              : null,
+                          icon: const Icon(Icons.open_in_new_rounded),
                         ),
                       ),
                     ],

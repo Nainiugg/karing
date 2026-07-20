@@ -37,29 +37,31 @@ NodeRecord _node({
 
 void main() {
   test('assigns country-IP names with stable duplicate suffixes', () {
-    final List<NodeRecord> named = const NodeNamingService().assign(<NodeRecord>[
-      _node(
-        id: '1',
-        name: 'one',
-        config: <String, Object?>{
-          'type': 'trojan',
-          'tag': 'one',
-          'server': 'one.invalid',
-          'server_port': 443,
-          'password': 'test',
-        },
-      ),
-      _node(
-        id: '2',
-        name: 'two',
-        config: <String, Object?>{
-          'type': 'socks',
-          'tag': 'two',
-          'server': '192.0.2.2',
-          'server_port': 1080,
-        },
-      ),
-    ]);
+    final List<NodeRecord> named = const NodeNamingService().assign(
+      <NodeRecord>[
+        _node(
+          id: '1',
+          name: 'one',
+          config: <String, Object?>{
+            'type': 'trojan',
+            'tag': 'one',
+            'server': 'one.invalid',
+            'server_port': 443,
+            'password': 'test',
+          },
+        ),
+        _node(
+          id: '2',
+          name: 'two',
+          config: <String, Object?>{
+            'type': 'socks',
+            'tag': 'two',
+            'server': '192.0.2.2',
+            'server_port': 1080,
+          },
+        ),
+      ],
+    );
 
     expect(named.first.exportedName, '日本-203.0.113.7');
     expect(named.last.exportedName, '日本-203.0.113.7-2');
@@ -93,13 +95,14 @@ void main() {
       },
     ).copyWith(exportedName: '日本-203.0.113.7');
 
-    final String json = const KaringExportService().buildJson(
-      <NodeRecord>[dependency, target],
-    );
+    final String json = const KaringExportService().buildJson(<NodeRecord>[
+      dependency,
+      target,
+    ]);
     final Map<String, Object?> root = jsonDecode(json) as Map<String, Object?>;
     final List<Object?> outbounds = root['outbounds']! as List<Object?>;
-    final List<Map<String, Object?>> maps =
-        outbounds.cast<Map<String, Object?>>();
+    final List<Map<String, Object?>> maps = outbounds
+        .cast<Map<String, Object?>>();
 
     expect(maps.first['type'], 'selector');
     expect(maps.first['outbounds'], <String>['日本-203.0.113.7']);

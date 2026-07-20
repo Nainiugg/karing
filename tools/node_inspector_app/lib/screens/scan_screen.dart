@@ -147,8 +147,8 @@ class _ScanScreenState extends State<ScanScreen> {
                         controller.scanning
                             ? '当前：${controller.currentNode}'
                             : controller.nodes.isEmpty
-                                ? '等待节点导入。'
-                                : '准备检测 ${controller.nodes.length} 个节点。',
+                            ? '等待节点导入。'
+                            : '准备检测 ${controller.nodes.length} 个节点。',
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -160,8 +160,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Card(
-                color: Theme.of(context).colorScheme.tertiaryContainer,
+              const Card(
+                color: Colors.transparent,
                 child: const Padding(
                   padding: EdgeInsets.all(18),
                   child: Row(

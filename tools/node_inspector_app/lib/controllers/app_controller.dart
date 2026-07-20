@@ -5,13 +5,17 @@ import 'package:flutter/foundation.dart';
 
 import '../models/app_settings.dart';
 import '../models/import_report.dart';
+import '../models/node_deep_inspection.dart';
 import '../models/node_record.dart';
 import '../models/node_status.dart';
 import '../models/node_test_result.dart';
 import '../services/import_service.dart';
+import '../services/inspection_report_service.dart';
+import '../services/ip_intelligence_service.dart';
 import '../services/karing_export_service.dart';
 import '../services/node_naming_service.dart';
 import '../services/node_probe.dart';
+import '../storage/app_secret_store.dart';
 import '../storage/app_store.dart';
 
 class NodeCounters {
@@ -35,20 +39,31 @@ class AppController extends ChangeNotifier {
     NodeProbe? probe,
     NodeNamingService? naming,
     KaringExportService? exporter,
-  })  : _store = store,
-        _importer = importer ?? ImportService(),
-        _probe = probe ?? const UnavailableNodeProbe(),
-        _naming = naming ?? const NodeNamingService(),
-        _exporter = exporter ?? const KaringExportService();
+    IpIntelligenceService? intelligence,
+    InspectionReportService? reportService,
+    AppSecretStore? secretStore,
+  }) : _store = store,
+       _importer = importer ?? ImportService(),
+       _probe = probe ?? const UnavailableNodeProbe(),
+       _naming = naming ?? const NodeNamingService(),
+       _exporter = exporter ?? const KaringExportService(),
+       _intelligence = intelligence ?? const PublicIpIntelligenceService(),
+       _reportService = reportService ?? const InspectionReportService(),
+       _secretStore = secretStore ?? MemoryAppSecretStore();
 
   final AppStore _store;
   final ImportService _importer;
   final NodeProbe _probe;
   final NodeNamingService _naming;
   final KaringExportService _exporter;
+  final IpIntelligenceService _intelligence;
+  final InspectionReportService _reportService;
+  final AppSecretStore _secretStore;
   final List<NodeRecord> _nodes = <NodeRecord>[];
+  final Set<String> _inspectingNodeIds = <String>{};
 
   AppSettings _settings = const AppSettings();
+  AppApiSecrets _apiSecrets = const AppApiSecrets();
   int _pageIndex = 0;
   bool _initialized = false;
   bool _busy = false;
@@ -76,6 +91,16 @@ class AppController extends ChangeNotifier {
   String? get startupWarning => _startupWarning;
   String? get lastError => _lastError;
   ImportReport? get lastImportReport => _lastImportReport;
+  bool get hasIpInfoToken => _apiSecrets.hasIpInfoToken;
+  bool get hasAbuseIpDbKey => _apiSecrets.hasAbuseIpDbKey;
+  bool isInspectingNode(String nodeId) => _inspectingNodeIds.contains(nodeId);
+
+  NodeRecord? nodeById(String nodeId) {
+    for (final NodeRecord node in _nodes) {
+      if (node.id == nodeId) return node;
+    }
+    return null;
+  }
 
   NodeCounters get counters {
     final int usable = _nodes
@@ -105,10 +130,22 @@ class AppController extends ChangeNotifier {
       final AppSnapshot snapshot = await _store.load();
       _nodes
         ..clear()
-        ..addAll(snapshot.nodes);
+        ..addAll(_normalizeAndDedupe(snapshot.nodes));
       _settings = snapshot.settings;
+      if (_nodes.length != snapshot.nodes.length ||
+          _hasLegacyFingerprints(snapshot.nodes)) {
+        await _saveSnapshot();
+      }
     } on Object catch (error) {
       _startupWarning = '无法读取本地数据，已使用空白工作区：$error';
+    }
+    try {
+      _apiSecrets = await _secretStore.load();
+    } on Object catch (error) {
+      final String warning = '无法读取加密 API 密钥：$error';
+      _startupWarning = _startupWarning == null
+          ? warning
+          : '${_startupWarning!}\n$warning';
     }
     _initialized = true;
     notifyListeners();
@@ -170,8 +207,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       final ImportReport parsed = await action();
-      final Set<String> existing =
-          _nodes.map((NodeRecord node) => node.fingerprint).toSet();
+      final Set<String> existing = _nodes
+          .map(
+            (NodeRecord node) =>
+                ImportService.fingerprintForConfig(node.normalizedConfig),
+          )
+          .toSet();
       final List<NodeRecord> added = parsed.nodes
           .where((NodeRecord node) => existing.add(node.fingerprint))
           .toList(growable: false);
@@ -194,6 +235,25 @@ class AppController extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  static bool _hasLegacyFingerprints(List<NodeRecord> nodes) => nodes.any(
+    (NodeRecord node) =>
+        node.fingerprint !=
+        ImportService.fingerprintForConfig(node.normalizedConfig),
+  );
+
+  static List<NodeRecord> _normalizeAndDedupe(List<NodeRecord> nodes) {
+    final Set<String> seen = <String>{};
+    final List<NodeRecord> result = <NodeRecord>[];
+    for (final NodeRecord node in nodes) {
+      final String fingerprint = ImportService.fingerprintForConfig(
+        node.normalizedConfig,
+      );
+      if (!seen.add(fingerprint)) continue;
+      result.add(node.copyWith(fingerprint: fingerprint));
+    }
+    return result;
   }
 
   Future<void> scanAll() async {
@@ -302,16 +362,90 @@ class AppController extends ChangeNotifier {
 
   String buildKaringExport() => _exporter.buildJson(_nodes);
 
+  String buildInspectionReport(String nodeId) {
+    final NodeRecord? node = nodeById(nodeId);
+    if (node == null) throw StateError('找不到该节点');
+    return _reportService.buildJson(node);
+  }
+
+  Future<NodeDeepInspection> inspectNode(String nodeId) async {
+    if (_busy || _scanning || _inspectingNodeIds.isNotEmpty) {
+      throw StateError('当前有其他任务正在运行');
+    }
+    final NodeRecord? node = nodeById(nodeId);
+    if (node == null) throw StateError('找不到该节点');
+    if (node.status != NodeStatus.usable) {
+      throw StateError('只有已经通过可用性检测的节点才能深度检测');
+    }
+    _inspectingNodeIds.add(nodeId);
+    _lastError = null;
+    notifyListeners();
+    try {
+      await _probe.prepare(_settings);
+      final NodeDeepInspection detected = await _probe.inspect(
+        node,
+        List<NodeRecord>.of(_nodes),
+        _settings,
+      );
+      final NodeDeepInspection enriched = await _intelligence.enrich(
+        detected,
+        _settings,
+        _apiSecrets,
+        cached: node.inspection,
+      );
+      final List<NodeInspectionHistoryEntry> history =
+          <NodeInspectionHistoryEntry>[
+            if (enriched.hasAnyAddress) enriched.historyEntry,
+            ...node.inspectionHistory,
+          ].take(20).toList(growable: false);
+      _replaceById(
+        nodeId,
+        node.copyWith(inspection: enriched, inspectionHistory: history),
+      );
+      await _saveSnapshot();
+      return enriched;
+    } on Object catch (error) {
+      _lastError = error.toString();
+      rethrow;
+    } finally {
+      _inspectingNodeIds.remove(nodeId);
+      notifyListeners();
+    }
+  }
+
   Future<void> replaceNodes(List<NodeRecord> nodes) async {
     _nodes
       ..clear()
-      ..addAll(nodes);
+      ..addAll(_normalizeAndDedupe(nodes));
     await _persistWithBusyState();
   }
 
   Future<void> updateSettings(AppSettings settings) async {
     _settings = settings;
     await _persistWithBusyState();
+  }
+
+  Future<void> updateApiSecrets({
+    String? ipInfoToken,
+    String? abuseIpDbKey,
+    bool clearIpInfoToken = false,
+    bool clearAbuseIpDbKey = false,
+  }) async {
+    final AppApiSecrets updated = _apiSecrets.copyWith(
+      ipInfoToken: clearIpInfoToken
+          ? ''
+          : (ipInfoToken?.trim().isNotEmpty ?? false)
+          ? ipInfoToken!.trim()
+          : _apiSecrets.ipInfoToken,
+      abuseIpDbKey: clearAbuseIpDbKey
+          ? ''
+          : (abuseIpDbKey?.trim().isNotEmpty ?? false)
+          ? abuseIpDbKey!.trim()
+          : _apiSecrets.abuseIpDbKey,
+    );
+    await _secretStore.save(updated);
+    _apiSecrets = updated;
+    notifyListeners();
   }
 
   Future<void> clearNodes() async {

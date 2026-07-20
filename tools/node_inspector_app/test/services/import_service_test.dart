@@ -28,7 +28,10 @@ proxies:
     expect(report.nodes, hasLength(2));
     expect(report.nodes.first.protocol, 'trojan');
     expect(report.nodes.first.normalizedConfig['server_port'], 443);
-    expect(report.nodes.first.normalizedConfig['tls'], isA<Map<String, Object?>>());
+    expect(
+      report.nodes.first.normalizedConfig['tls'],
+      isA<Map<String, Object?>>(),
+    );
     expect(report.nodes.last.protocol, 'socks');
   });
 
@@ -62,8 +65,46 @@ trojan://test@example.invalid:443?sni=example.invalid#second
     expect(report.nodes.single.originalName, 'first');
   });
 
+  test(
+    'deduplicates equivalent nodes across names, key order and host case',
+    () {
+      const String json = '''
+{
+  "outbounds": [
+    {"type":"trojan","tag":"first","server":"EXAMPLE.invalid","server_port":443,"password":"secret","tls":{"server_name":"EXAMPLE.invalid","enabled":true}},
+    {"password":"secret","server_port":443,"server":"example.invalid","tag":"second","tls":{"enabled":true,"server_name":"example.invalid"},"type":"TROJAN"}
+  ]
+}
+''';
+
+      final report = importer.parse(json, sourceId: 'canonical-dedupe');
+
+      expect(report.nodes, hasLength(1));
+      expect(report.duplicates, 1);
+      expect(report.nodes.single.fingerprint, startsWith('v2:'));
+    },
+  );
+
+  test('keeps same endpoint when credentials or transport differ', () {
+    const String json = '''
+{
+  "outbounds": [
+    {"type":"trojan","tag":"one","server":"example.invalid","server_port":443,"password":"secret-a","tls":{"enabled":true}},
+    {"type":"trojan","tag":"two","server":"example.invalid","server_port":443,"password":"secret-b","tls":{"enabled":true}},
+    {"type":"trojan","tag":"three","server":"example.invalid","server_port":443,"password":"secret-a","tls":{"enabled":true},"transport":{"type":"ws","path":"/ws"}}
+  ]
+}
+''';
+
+    final report = importer.parse(json, sourceId: 'not-duplicates');
+
+    expect(report.nodes, hasLength(3));
+    expect(report.duplicates, 0);
+  });
+
   test('decodes a Base64 line subscription', () {
-    const String link = 'vless://00000000-0000-0000-0000-000000000001@example.invalid:443?security=tls&sni=example.invalid#Tokyo';
+    const String link =
+        'vless://00000000-0000-0000-0000-000000000001@example.invalid:443?security=tls&sni=example.invalid#Tokyo';
     final String encoded = base64.encode(utf8.encode(link));
 
     final report = importer.parse(encoded, sourceId: 'base64-test');
@@ -88,8 +129,11 @@ trojan://test@example.invalid:443?sni=example.invalid#second
     expect(report.format, '网页文本 / 分享链接');
     expect(report.candidates, 3);
     expect(report.nodes, hasLength(3));
-    expect(report.nodes.map((node) => node.protocol),
-        <String>['vless', 'trojan', 'http']);
+    expect(report.nodes.map((node) => node.protocol), <String>[
+      'vless',
+      'trojan',
+      'http',
+    ]);
     expect(report.filteredNoise, greaterThanOrEqualTo(3));
     expect(report.issues, isEmpty);
     expect(report.nodes.first.normalizedConfig['server'], 'example.invalid');

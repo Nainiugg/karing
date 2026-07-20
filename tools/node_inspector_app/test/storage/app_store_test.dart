@@ -38,7 +38,12 @@ void main() {
     await store.save(
       AppSnapshot(
         nodes: <NodeRecord>[node],
-        settings: const AppSettings(concurrency: 8, timeoutSeconds: 30),
+        settings: const AppSettings(
+          concurrency: 8,
+          timeoutSeconds: 30,
+          publicIntelligenceEnabled: false,
+          intelligenceCacheHours: 72,
+        ),
       ),
     );
     final AppSnapshot restored = await store.load();
@@ -47,6 +52,8 @@ void main() {
     expect(restored.nodes.single.protocol, 'trojan');
     expect(restored.settings.concurrency, 8);
     expect(restored.settings.timeoutSeconds, 30);
+    expect(restored.settings.publicIntelligenceEnabled, isFalse);
+    expect(restored.settings.intelligenceCacheHours, 72);
   });
 
   test('missing store returns an empty snapshot', () async {

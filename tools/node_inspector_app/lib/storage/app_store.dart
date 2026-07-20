@@ -19,9 +19,9 @@ class AppSnapshot {
     return AppSnapshot(
       nodes: rawNodes is List<Object?>
           ? rawNodes
-              .whereType<Map<String, Object?>>()
-              .map(NodeRecord.fromJson)
-              .toList(growable: false)
+                .whereType<Map<String, Object?>>()
+                .map(NodeRecord.fromJson)
+                .toList(growable: false)
           : const <NodeRecord>[],
       settings: rawSettings is Map<String, Object?>
           ? AppSettings.fromJson(rawSettings)
@@ -31,7 +31,7 @@ class AppSnapshot {
 
   Map<String, Object?> toJson() {
     return <String, Object?>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'nodes': nodes.map((NodeRecord node) => node.toJson()).toList(),
       'settings': settings.toJson(),
     };
@@ -51,9 +51,8 @@ class LocalJsonAppStore implements AppStore {
 
   static File defaultFile() {
     final Map<String, String> environment = Platform.environment;
-    final String root = environment['APPDATA'] ??
-        environment['HOME'] ??
-        Directory.current.path;
+    final String root =
+        environment['APPDATA'] ?? environment['HOME'] ?? Directory.current.path;
     final String separator = Platform.pathSeparator;
     return File('$root${separator}NodeInspector${separator}data.json');
   }
@@ -82,9 +81,9 @@ class LocalJsonAppStore implements AppStore {
     await file.parent.create(recursive: true);
     final File temporary = File('${file.path}.tmp');
     final File backup = File('${file.path}.bak');
-    final String contents = const JsonEncoder.withIndent('  ').convert(
-      snapshot.toJson(),
-    );
+    final String contents = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(snapshot.toJson());
 
     await temporary.writeAsString('$contents\n', flush: true);
     if (await backup.exists()) {

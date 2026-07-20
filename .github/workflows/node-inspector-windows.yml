@@ -3,6 +3,7 @@ name: Node Inspector Windows
 on:
   push:
     branches:
+      - main
       - feature/node-inspector-app
     paths:
       - tools/node_inspector_app/**
@@ -59,10 +60,37 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
+      - name: Verify Windows release starts and includes scan core
+        shell: powershell
+        run: |
+          $release = Resolve-Path "build/windows/x64/runner/Release"
+          $exe = Join-Path $release "node_inspector_app.exe"
+          $flutterDll = Join-Path $release "flutter_windows.dll"
+          $data = Join-Path $release "data"
+          $core = Join-Path $release "data/flutter_assets/assets/core/sing-box.exe"
+          $cronet = Join-Path $release "data/flutter_assets/assets/core/libcronet.dll"
+          foreach ($required in @($exe, $flutterDll, $data, $core, $cronet)) {
+            if (-not (Test-Path $required)) {
+              throw "Release is missing required item: $required"
+            }
+          }
+          $process = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 8
+            if ($process.HasExited) {
+              throw "node_inspector_app.exe exited during startup with code $($process.ExitCode)"
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              $process.WaitForExit()
+            }
+          }
+
       - name: Upload Windows application
         uses: actions/upload-artifact@v7
         with:
-          name: node-inspector-windows
+          name: node-inspector-windows-v0.6.2
           path: tools/node_inspector_app/build/windows/x64/runner/Release/**
           if-no-files-found: error
           retention-days: 14

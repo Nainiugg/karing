@@ -29,16 +29,20 @@ class KaringExportService {
     }
 
     final Map<String, NodeRecord> sourceTags = <String, NodeRecord>{
-      for (final NodeRecord node in nodes) _sourceKey(node, node.originalName): node,
+      for (final NodeRecord node in nodes)
+        _sourceKey(node, node.originalName): node,
     };
     final Map<String, String> exportTags = <String, String>{
       for (final NodeRecord node in usable) node.id: node.exportedName!,
     };
-    final Set<String> includedIds = usable.map((NodeRecord node) => node.id).toSet();
+    final Set<String> includedIds = usable
+        .map((NodeRecord node) => node.id)
+        .toSet();
 
     void includeDependencies(NodeRecord owner) {
       for (final String dependency in owner.dependencies) {
-        final NodeRecord? match = sourceTags[_sourceKey(owner, dependency)] ??
+        final NodeRecord? match =
+            sourceTags[_sourceKey(owner, dependency)] ??
             _firstByName(nodes, dependency);
         if (match == null) {
           throw KaringExportException(
@@ -64,7 +68,8 @@ class KaringExportService {
       config['tag'] = exportTags[node.id]!;
       final String dependency = config['detour']?.toString() ?? '';
       if (dependency.isNotEmpty) {
-        final NodeRecord? match = sourceTags[_sourceKey(node, dependency)] ??
+        final NodeRecord? match =
+            sourceTags[_sourceKey(node, dependency)] ??
             _firstByName(nodes, dependency);
         if (match == null || exportTags[match.id] == null) {
           throw KaringExportException('${node.originalName} 的 detour 依赖无法导出');
@@ -109,10 +114,7 @@ class KaringExportService {
     return null;
   }
 
-  static String _uniqueDependencyTag(
-    NodeRecord node,
-    Set<String> existing,
-  ) {
+  static String _uniqueDependencyTag(NodeRecord node, Set<String> existing) {
     final String base = '依赖-${node.originalName}'
         .replaceAll(RegExp(r'[\u0000-\u001f]+'), '-')
         .trim();
