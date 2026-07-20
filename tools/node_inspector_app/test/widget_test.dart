@@ -27,5 +27,12 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('导入节点'), findsOneWidget);
     expect(find.byType(AppBackground), findsOneWidget);
+
+    final ThemeData theme = Theme.of(
+      tester.element(find.text('导入节点')),
+    );
+    expect(theme.cardTheme.color, Colors.transparent);
+    expect(theme.navigationRailTheme.backgroundColor, Colors.transparent);
+    expect(theme.inputDecorationTheme.fillColor?.a, lessThan(0.1));
   });
 }

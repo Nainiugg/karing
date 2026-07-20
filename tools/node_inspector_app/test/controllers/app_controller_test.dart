@@ -59,6 +59,26 @@ void main() {
     expect(controller.pageIndex, 2);
   });
 
+  test('repeated imports deduplicate across separate batches', () async {
+    final MemoryAppStore store = MemoryAppStore();
+    final AppController controller = AppController(store: store);
+    await controller.initialize();
+
+    const String first =
+        'trojan://secret@EXAMPLE.invalid:443?security=tls&sni=EXAMPLE.invalid#first';
+    const String second =
+        'trojan://secret@example.invalid:443?sni=example.invalid&security=tls#second';
+    final firstReport = await controller.importText(first);
+    final secondReport = await controller.importText(second);
+
+    expect(firstReport.imported, 1);
+    expect(firstReport.duplicates, 0);
+    expect(secondReport.imported, 0);
+    expect(secondReport.duplicates, 1);
+    expect(controller.nodes, hasLength(1));
+    expect(store.snapshot.nodes, hasLength(1));
+  });
+
   test(
     'startup upgrades fingerprints and removes persisted duplicates',
     () async {
