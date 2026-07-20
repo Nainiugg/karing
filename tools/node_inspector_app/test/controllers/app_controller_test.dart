@@ -17,7 +17,11 @@ NodeRecord _node(String id, NodeStatus status) {
     sourceId: 'source',
     originalName: 'node-$id',
     protocol: 'socks',
-    normalizedConfig: const <String, Object?>{},
+    normalizedConfig: <String, Object?>{
+      'type': 'socks',
+      'server': '192.0.2.$id',
+      'server_port': 1080,
+    },
     dependencies: const <String>[],
     fingerprint: 'fingerprint-$id',
     importedAt: DateTime.utc(2026),
