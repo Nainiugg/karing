@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
+import '../models/ip_profile.dart';
+import '../models/node_deep_inspection.dart';
 import '../models/node_record.dart';
 import '../models/node_test_result.dart';
 import 'node_probe.dart';
@@ -47,10 +49,7 @@ class SingBoxNodeProbe implements NodeProbe {
     AppSettings settings,
   ) async {
     if (_cancelled) {
-      return NodeTestResult(
-        checkedAt: DateTime.now().toUtc(),
-        error: '检测已取消',
-      );
+      return NodeTestResult(checkedAt: DateTime.now().toUtc(), error: '检测已取消');
     }
     final File core = _core ?? await _CoreLocator.ensureAvailable();
     final int port = await _reservePort();
@@ -127,10 +126,7 @@ class SingBoxNodeProbe implements NodeProbe {
         Duration(seconds: settings.timeoutSeconds),
       );
     } on TimeoutException {
-      return NodeTestResult(
-        checkedAt: DateTime.now().toUtc(),
-        error: '检测超时',
-      );
+      return NodeTestResult(checkedAt: DateTime.now().toUtc(), error: '检测超时');
     } on Object catch (error) {
       return NodeTestResult(
         checkedAt: DateTime.now().toUtc(),
@@ -150,6 +146,100 @@ class SingBoxNodeProbe implements NodeProbe {
       } on FileSystemException {
         // The process has already been stopped. A locked temporary directory
         // is harmless and will be reused or removed by a later run.
+      }
+    }
+  }
+
+  @override
+  Future<NodeDeepInspection> inspect(
+    NodeRecord node,
+    List<NodeRecord> allNodes,
+    AppSettings settings,
+  ) async {
+    if (_cancelled) return _inspectionFailure('检测已取消');
+    final File core = _core ?? await _CoreLocator.ensureAvailable();
+    final int port = await _reservePort();
+    final Directory runtime = await _runtimeDirectory('${node.id}-details');
+    final File configFile = File(
+      '${runtime.path}${Platform.pathSeparator}isolated.json',
+    );
+    final Map<String, Object?> config = _buildConfig(
+      node,
+      allNodes,
+      port,
+      _bindingAddress,
+    );
+    await configFile.writeAsString(
+      '${const JsonEncoder.withIndent('  ').convert(config)}\n',
+      flush: true,
+    );
+
+    Process? process;
+    try {
+      final ProcessResult check = await Process.run(
+        core.path,
+        <String>['check', '-c', configFile.path],
+        workingDirectory: runtime.path,
+        runInShell: false,
+      ).timeout(const Duration(seconds: 10));
+      if (check.exitCode != 0) {
+        return _inspectionFailure(
+          '配置不兼容：${_cleanCoreError(check.stderr, runtime.path)}',
+        );
+      }
+      if (_cancelled) return _inspectionFailure('检测已取消');
+
+      process = await Process.start(
+        core.path,
+        <String>['run', '-c', configFile.path],
+        workingDirectory: runtime.path,
+        runInShell: false,
+        mode: ProcessStartMode.normal,
+      );
+      _processes.add(process);
+      final Future<String> stdout = process.stdout
+          .transform(utf8.decoder)
+          .join()
+          .then((String value) => value);
+      final Future<String> stderr = process.stderr
+          .transform(utf8.decoder)
+          .join()
+          .then((String value) => value);
+
+      final bool ready = await _waitUntilReady(port);
+      if (!ready) {
+        process.kill();
+        final String error = await stderr.timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => '',
+        );
+        await stdout.timeout(const Duration(seconds: 2), onTimeout: () => '');
+        return _inspectionFailure(
+          '隔离核心启动失败：${_cleanCoreError(error, runtime.path)}',
+        );
+      }
+      return await _probeDualStack(
+        port,
+        settings,
+        Duration(seconds: settings.timeoutSeconds),
+      );
+    } on TimeoutException {
+      return _inspectionFailure('深度检测超时');
+    } on Object catch (error) {
+      return _inspectionFailure('检测进程异常：${_safeError(error)}');
+    } finally {
+      if (process != null) {
+        _processes.remove(process);
+        process.kill();
+        await process.exitCode.timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => -1,
+        );
+      }
+      try {
+        if (await runtime.exists()) await runtime.delete(recursive: true);
+      } on FileSystemException {
+        // A stopped Windows process can briefly retain a file handle.
       }
     }
   }
@@ -246,7 +336,8 @@ class SingBoxNodeProbe implements NodeProbe {
     List<NodeRecord> nodes,
   ) {
     for (final NodeRecord node in nodes) {
-      if (node.sourceId == owner.sourceId && node.originalName == tag) return node;
+      if (node.sourceId == owner.sourceId && node.originalName == tag)
+        return node;
     }
     for (final NodeRecord node in nodes) {
       if (node.originalName == tag) return node;
@@ -281,10 +372,14 @@ class SingBoxNodeProbe implements NodeProbe {
         ..findProxy = (Uri uri) => 'PROXY 127.0.0.1:$port';
       final Stopwatch stopwatch = Stopwatch()..start();
       try {
-        final HttpClientRequest request = await client.getUrl(endpoint).timeout(timeout);
+        final HttpClientRequest request = await client
+            .getUrl(endpoint)
+            .timeout(timeout);
         request.headers.set(HttpHeaders.acceptHeader, 'application/json');
         request.headers.set(HttpHeaders.connectionHeader, 'close');
-        final HttpClientResponse response = await request.close().timeout(timeout);
+        final HttpClientResponse response = await request.close().timeout(
+          timeout,
+        );
         final List<int> bytes = await response
             .fold<List<int>>(<int>[], (List<int> data, List<int> chunk) {
               if (data.length + chunk.length > 1024 * 1024) {
@@ -324,9 +419,114 @@ class SingBoxNodeProbe implements NodeProbe {
         client.close(force: true);
       }
     }
-    return NodeTestResult(
+    return NodeTestResult(checkedAt: DateTime.now().toUtc(), error: lastError);
+  }
+
+  static Future<NodeDeepInspection> _probeDualStack(
+    int port,
+    AppSettings settings,
+    Duration timeout,
+  ) async {
+    final DateTime checkedAt = DateTime.now().toUtc();
+    final List<_AddressAttempt> attempts =
+        await Future.wait<_AddressAttempt>(<Future<_AddressAttempt>>[
+          _probeAddress(
+            port,
+            settings.ipv4Endpoint,
+            InternetAddressType.IPv4,
+            timeout,
+          ),
+          _probeAddress(
+            port,
+            settings.ipv6Endpoint,
+            InternetAddressType.IPv6,
+            timeout,
+          ),
+        ]);
+    return NodeDeepInspection(
+      checkedAt: checkedAt,
+      ipv4: attempts[0].profile,
+      ipv6: attempts[1].profile,
+      ipv4Error: attempts[0].error,
+      ipv6Error: attempts[1].error,
+    );
+  }
+
+  static Future<_AddressAttempt> _probeAddress(
+    int port,
+    String endpointValue,
+    InternetAddressType expectedType,
+    Duration timeout,
+  ) async {
+    final Uri? endpoint = Uri.tryParse(endpointValue);
+    if (endpoint == null || endpoint.scheme != 'https') {
+      return const _AddressAttempt(error: '检测地址必须使用有效的 HTTPS URL');
+    }
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = timeout
+      ..idleTimeout = timeout
+      ..findProxy = (Uri _) => 'PROXY 127.0.0.1:$port';
+    final Stopwatch stopwatch = Stopwatch()..start();
+    try {
+      final HttpClientRequest request = await client
+          .getUrl(endpoint)
+          .timeout(timeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.connectionHeader, 'close');
+      final HttpClientResponse response = await request.close().timeout(
+        timeout,
+      );
+      final List<int> bytes = await response
+          .fold<List<int>>(<int>[], (List<int> data, List<int> chunk) {
+            if (data.length + chunk.length > 64 * 1024) {
+              throw const FormatException('响应超过 64 KB');
+            }
+            data.addAll(chunk);
+            return data;
+          })
+          .timeout(timeout);
+      stopwatch.stop();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _AddressAttempt(error: 'HTTP ${response.statusCode}');
+      }
+      final String text = utf8.decode(bytes).trim();
+      String ip = text;
+      try {
+        final Object? decoded = jsonDecode(text);
+        if (decoded is Map<String, Object?>) {
+          ip = decoded['ip']?.toString().trim() ?? '';
+        }
+      } on FormatException {
+        // Plain-text address endpoints are also supported.
+      }
+      final InternetAddress? address = InternetAddress.tryParse(ip);
+      if (address == null || address.type != expectedType) {
+        final String expected = expectedType == InternetAddressType.IPv4
+            ? 'IPv4'
+            : 'IPv6';
+        return _AddressAttempt(error: '接口没有返回有效 $expected 地址');
+      }
+      return _AddressAttempt(
+        profile: IpProfile(
+          ip: ip,
+          version: expectedType == InternetAddressType.IPv4 ? 4 : 6,
+          checkedAt: DateTime.now().toUtc(),
+          latencyMs: stopwatch.elapsedMilliseconds,
+          sources: const <String>['ipify'],
+        ),
+      );
+    } on Object catch (error) {
+      return _AddressAttempt(error: _safeError(error));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static NodeDeepInspection _inspectionFailure(String message) {
+    return NodeDeepInspection(
       checkedAt: DateTime.now().toUtc(),
-      error: lastError,
+      ipv4Error: message,
+      ipv6Error: message,
     );
   }
 
@@ -401,9 +601,17 @@ class SingBoxNodeProbe implements NodeProbe {
   }
 }
 
+class _AddressAttempt {
+  const _AddressAttempt({this.profile, this.error});
+
+  final IpProfile? profile;
+  final String? error;
+}
+
 class _CoreLocator {
   static Directory get appDataRoot {
-    final String root = Platform.environment['APPDATA'] ??
+    final String root =
+        Platform.environment['APPDATA'] ??
         Platform.environment['HOME'] ??
         Directory.current.path;
     return Directory('$root${Platform.pathSeparator}NodeInspector');
@@ -413,7 +621,9 @@ class _CoreLocator {
     if (!Platform.isWindows) {
       throw UnsupportedError('隔离检测核心目前只支持 Windows');
     }
-    final Directory executableDirectory = File(Platform.resolvedExecutable).parent;
+    final Directory executableDirectory = File(
+      Platform.resolvedExecutable,
+    ).parent;
     final List<File> candidates = <File>[
       File(
         '${Directory.current.path}${Platform.pathSeparator}assets${Platform.pathSeparator}core${Platform.pathSeparator}sing-box.exe',
@@ -434,10 +644,12 @@ class _CoreLocator {
     );
     if (await _validBundle(installed)) return installed;
     try {
-      final ByteData executableData =
-          await rootBundle.load('assets/core/sing-box.exe');
-      final ByteData libraryData =
-          await rootBundle.load('assets/core/libcronet.dll');
+      final ByteData executableData = await rootBundle.load(
+        'assets/core/sing-box.exe',
+      );
+      final ByteData libraryData = await rootBundle.load(
+        'assets/core/libcronet.dll',
+      );
       await installed.parent.create(recursive: true);
       await installed.writeAsBytes(
         executableData.buffer.asUint8List(
@@ -502,20 +714,20 @@ foreach ($route in $routes) {
 }
 ''';
     try {
-      final ProcessResult result = await Process.run(
-        'powershell.exe',
-        <String>[
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          script,
-        ],
-        runInShell: false,
-      ).timeout(const Duration(seconds: 8));
+      final ProcessResult result = await Process.run('powershell.exe', <String>[
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        script,
+      ], runInShell: false).timeout(const Duration(seconds: 8));
       if (result.exitCode != 0) return '';
-      final String address = result.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
+      final String address = result.stdout
+          .toString()
+          .trim()
+          .split(RegExp(r'[\r\n]+'))
+          .first;
       return InternetAddress.tryParse(address)?.type == InternetAddressType.IPv4
           ? address
           : '';
@@ -543,14 +755,14 @@ class _GeoResult {
   factory _GeoResult.fromJson(Map<String, Object?> json) {
     final Map<String, Object?> connection =
         json['connection'] is Map<String, Object?>
-            ? json['connection'] as Map<String, Object?>
-            : <String, Object?>{};
+        ? json['connection'] as Map<String, Object?>
+        : <String, Object?>{};
     final String asn = _value(json['asn']).ifEmpty(_value(connection['asn']));
     return _GeoResult(
       ip: _value(json['ip']),
-      countryCode: _value(json['country_code']).ifEmpty(
-        _value(json['countryCode']),
-      ),
+      countryCode: _value(
+        json['country_code'],
+      ).ifEmpty(_value(json['countryCode'])),
       country: _value(json['country']),
       asn: asn.isEmpty || asn.toUpperCase().startsWith('AS') ? asn : 'AS$asn',
       organization: _value(json['isp'])

@@ -79,7 +79,9 @@ class _ImportScreenState extends State<ImportScreen> {
                   const SizedBox(height: 12),
                   const Text('前几项原因：'),
                   const SizedBox(height: 4),
-                  ...report.issues.take(5).map(
+                  ...report.issues
+                      .take(5)
+                      .map(
                         (ImportIssue issue) => Text(
                           '• ${issue.item.isEmpty ? '' : '${issue.item}：'}${issue.message}',
                         ),
@@ -129,7 +131,8 @@ class _ImportScreenState extends State<ImportScreen> {
             children: <Widget>[
               PageHeader(
                 title: '导入节点',
-                description: '自动筛选网页乱文本，也支持订阅 URL、YAML、JSON、Base64 和分享链接。',
+                description:
+                    '自动筛选网页乱文本，并在单批、跨批及旧工作区中去重；支持订阅 URL、YAML、JSON、Base64 和分享链接。',
                 trailing: Chip(
                   avatar: const Icon(Icons.hub_outlined, size: 18),
                   label: Text('当前 ${widget.controller.nodes.length} 个节点'),
@@ -142,7 +145,10 @@ class _ImportScreenState extends State<ImportScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      Text('订阅地址', style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        '订阅地址',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 10),
                       TextField(
                         controller: _subscriptionController,
@@ -151,7 +157,9 @@ class _ImportScreenState extends State<ImportScreen> {
                           hintText: 'https://example.com/subscription',
                           prefixIcon: Icon(Icons.link_rounded),
                         ),
-                        onSubmitted: disabled ? null : (String _) => _importSubscription(),
+                        onSubmitted: disabled
+                            ? null
+                            : (String _) => _importSubscription(),
                       ),
                       const SizedBox(height: 12),
                       Align(

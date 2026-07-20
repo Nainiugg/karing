@@ -20,6 +20,7 @@ class NodeImportException implements Exception {
 }
 
 class ImportService {
+  static const String fingerprintVersion = 'v2';
   static const int _maximumDownloadBytes = 10 * 1024 * 1024;
   static const Set<String> _shareSchemes = <String>{
     'ss',
@@ -60,11 +61,15 @@ class ImportService {
     final HttpClient client = HttpClient()
       ..connectionTimeout = timeout
       ..idleTimeout = timeout
-      ..userAgent = 'NodeInspector/0.5.0';
+      ..userAgent = 'NodeInspector/0.6.1';
     try {
-      final HttpClientRequest request = await client.getUrl(uri).timeout(timeout);
+      final HttpClientRequest request = await client
+          .getUrl(uri)
+          .timeout(timeout);
       request.headers.set(HttpHeaders.acceptHeader, '*/*');
-      final HttpClientResponse response = await request.close().timeout(timeout);
+      final HttpClientResponse response = await request.close().timeout(
+        timeout,
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw NodeImportException('订阅服务器返回 HTTP ${response.statusCode}');
       }
@@ -137,7 +142,9 @@ class ImportService {
     }
 
     if (parsed.isEmpty) {
-      final String detail = issues.isEmpty ? '没有识别到支持的节点格式' : issues.first.message;
+      final String detail = issues.isEmpty
+          ? '没有识别到支持的节点格式'
+          : issues.first.message;
       throw NodeImportException(detail);
     }
 
@@ -145,7 +152,7 @@ class ImportService {
     final List<NodeRecord> nodes = <NodeRecord>[];
     int duplicates = 0;
     for (final _ParsedNode item in parsed) {
-      final String fingerprint = _fingerprint(item.config);
+      final String fingerprint = fingerprintForConfig(item.config);
       if (!fingerprints.add(fingerprint)) {
         duplicates += 1;
         continue;
@@ -175,10 +182,7 @@ class ImportService {
     );
   }
 
-  List<_ParsedNode> _parseContainer(
-    Object? value,
-    List<ImportIssue> issues,
-  ) {
+  List<_ParsedNode> _parseContainer(Object? value, List<ImportIssue> issues) {
     final Object? plain = _plain(value);
     final Map<String, Object?>? root = _stringMap(plain);
     Object? items = plain;
@@ -209,21 +213,17 @@ class ImportService {
         continue;
       }
       try {
-        final bool looksClash = clash ||
+        final bool looksClash =
+            clash ||
             item.containsKey('name') ||
             item.containsKey('cipher') ||
             item.containsKey('skip-cert-verify');
         result.add(
-          looksClash
-              ? _fromClash(item, index)
-              : _fromSingBox(item, index),
+          looksClash ? _fromClash(item, index) : _fromSingBox(item, index),
         );
       } on NodeImportException catch (error) {
         issues.add(
-          ImportIssue(
-            item: _displayName(item, index),
-            message: error.message,
-          ),
+          ImportIssue(item: _displayName(item, index), message: error.message),
         );
       }
     }
@@ -304,13 +304,13 @@ class ImportService {
       case 'anytls':
         config['password'] = _text(value['password']);
       case 'hysteria':
-        config['auth_str'] = _text(value['auth-str']).ifEmpty(
-          _text(value['auth']),
-        );
+        config['auth_str'] = _text(
+          value['auth-str'],
+        ).ifEmpty(_text(value['auth']));
       case 'hysteria2':
-        config['password'] = _text(value['password']).ifEmpty(
-          _text(value['auth']),
-        );
+        config['password'] = _text(
+          value['password'],
+        ).ifEmpty(_text(value['auth']));
         final String obfs = _text(value['obfs']);
         if (obfs.isNotEmpty) {
           config['obfs'] = <String, Object?>{
@@ -334,9 +334,15 @@ class ImportService {
         _copyIfText(config, 'password', value['password']);
     }
 
-    final bool tlsEnabled = _boolean(value['tls']) ||
-        <String>{'trojan', 'hysteria', 'hysteria2', 'tuic', 'anytls'}
-            .contains(type);
+    final bool tlsEnabled =
+        _boolean(value['tls']) ||
+        <String>{
+          'trojan',
+          'hysteria',
+          'hysteria2',
+          'tuic',
+          'anytls',
+        }.contains(type);
     final String network = _text(value['network']);
     final Map<String, Object?>? transport = _clashTransport(value, network);
     if (transport != null) config['transport'] = transport;
@@ -354,10 +360,7 @@ class ImportService {
     );
   }
 
-  _ShareParseResult _parseShareLinks(
-    String input,
-    List<ImportIssue> issues,
-  ) {
+  _ShareParseResult _parseShareLinks(String input, List<ImportIssue> issues) {
     final _LinkExtraction extraction = _extractLinks(input);
     final List<String> links = extraction.links;
     final List<_ParsedNode> result = <_ParsedNode>[];
@@ -365,13 +368,17 @@ class ImportService {
       final String link = links[index];
       final String scheme = link.split(':').first.toLowerCase();
       if (!_shareSchemes.contains(scheme)) {
-        issues.add(ImportIssue(item: '第 ${index + 1} 行', message: '无法识别分享链接协议'));
+        issues.add(
+          ImportIssue(item: '第 ${index + 1} 行', message: '无法识别分享链接协议'),
+        );
         continue;
       }
       try {
         result.add(_parseShareLink(link, index));
       } on NodeImportException catch (error) {
-        issues.add(ImportIssue(item: '第 ${index + 1} 个链接', message: error.message));
+        issues.add(
+          ImportIssue(item: '第 ${index + 1} 个链接', message: error.message),
+        );
       } on Object {
         issues.add(const ImportIssue(message: '分享链接格式损坏或包含无效转义'));
       }
@@ -467,7 +474,10 @@ class ImportService {
   }
 
   _ParsedNode _parseVmess(String link, int index) {
-    final String payload = link.substring(link.indexOf('://') + 3).split('#').first;
+    final String payload = link
+        .substring(link.indexOf('://') + 3)
+        .split('#')
+        .first;
     final String decoded = _decodeBase64(payload);
     final Map<String, Object?>? value = _stringMap(_tryJson(decoded));
     if (value == null) {
@@ -515,7 +525,9 @@ class ImportService {
     final String name = _decoded(initial.fragment).ifEmpty('ss-${index + 1}');
     String body = link.substring(link.indexOf('://') + 3).split('#').first;
     final int queryIndex = body.indexOf('?');
-    final String queryPart = queryIndex >= 0 ? body.substring(queryIndex + 1) : '';
+    final String queryPart = queryIndex >= 0
+        ? body.substring(queryIndex + 1)
+        : '';
     if (queryIndex >= 0) body = body.substring(0, queryIndex);
 
     String credentials;
@@ -564,10 +576,12 @@ class ImportService {
     bool defaultEnabled,
   ) {
     final String security = (query['security'] ?? '').toLowerCase();
-    final bool enabled = defaultEnabled || security == 'tls' || security == 'reality';
+    final bool enabled =
+        defaultEnabled || security == 'tls' || security == 'reality';
     if (!enabled) return null;
     final Map<String, Object?> tls = <String, Object?>{'enabled': true};
-    final String serverName = query['sni'] ?? query['serverName'] ?? query['peer'] ?? '';
+    final String serverName =
+        query['sni'] ?? query['serverName'] ?? query['peer'] ?? '';
     if (serverName.isNotEmpty) tls['server_name'] = serverName;
     if (_truthy(query['allowInsecure']) || _truthy(query['insecure'])) {
       tls['insecure'] = true;
@@ -667,9 +681,9 @@ class ImportService {
       'enabled': true,
       if (_boolean(value['skip-cert-verify'])) 'insecure': true,
     };
-    final String serverName = _text(value['servername']).ifEmpty(
-      _text(value['sni']),
-    );
+    final String serverName = _text(
+      value['servername'],
+    ).ifEmpty(_text(value['sni']));
     if (serverName.isNotEmpty) tls['server_name'] = serverName;
     final String fingerprint = _text(value['client-fingerprint']);
     if (fingerprint.isNotEmpty) {
@@ -730,9 +744,9 @@ class ImportService {
           .where(
             (RegExpMatch match) =>
                 match.start == 0 ||
-                !RegExp(r'[A-Za-z0-9_=&/?]').hasMatch(
-                  line.substring(match.start - 1, match.start),
-                ),
+                !RegExp(
+                  r'[A-Za-z0-9_=&/?]',
+                ).hasMatch(line.substring(match.start - 1, match.start)),
           )
           .toList();
       if (starts.isNotEmpty) {
@@ -834,12 +848,15 @@ class ImportService {
 
   static String? _tryDecodeSubscription(String input) {
     final String compact = input.replaceAll(RegExp(r'\s+'), '');
-    if (compact.length < 16 || !RegExp(r'^[A-Za-z0-9_\-+/=]+$').hasMatch(compact)) {
+    if (compact.length < 16 ||
+        !RegExp(r'^[A-Za-z0-9_\-+/=]+$').hasMatch(compact)) {
       return null;
     }
     try {
       final String decoded = _decodeBase64(compact);
-      if (_shareSchemes.any((String scheme) => decoded.contains('$scheme://')) ||
+      if (_shareSchemes.any(
+            (String scheme) => decoded.contains('$scheme://'),
+          ) ||
           decoded.trimLeft().startsWith('{') ||
           decoded.contains('proxies:')) {
         return decoded;
@@ -856,24 +873,133 @@ class ImportService {
     return utf8.decode(base64.decode(normalized), allowMalformed: false);
   }
 
-  static String _fingerprint(Map<String, Object?> config) {
+  /// Returns a stable, display-name-independent identity for a proxy node.
+  ///
+  /// The canonical form deliberately keeps credentials, transport, TLS and
+  /// detour settings: two endpoints that merely share an IP and port are not
+  /// necessarily the same usable node. Only representation differences that
+  /// do not alter routing (map order, tag/name, host case and empty optional
+  /// values) are folded together.
+  static String fingerprintForConfig(Map<String, Object?> config) {
     final Map<String, Object?> copy = _deepMapCopy(config)
       ..remove('tag')
       ..remove('name');
-    return sha256.convert(utf8.encode(jsonEncode(_canonical(copy)))).toString();
+    final Object? canonical = _canonical(copy);
+    final String digest = sha256
+        .convert(utf8.encode(jsonEncode(canonical)))
+        .toString();
+    return '$fingerprintVersion:$digest';
   }
 
-  static Object? _canonical(Object? value) {
+  static Object? _canonical(Object? value, [String? parentKey]) {
     if (value is Map<String, Object?>) {
       final List<String> keys = value.keys.toList()..sort();
-      return <String, Object?>{
-        for (final String key in keys) key: _canonical(value[key]),
-      };
+      final Map<String, Object?> result = <String, Object?>{};
+      for (final String key in keys) {
+        if (_isEmptyOptional(value[key])) continue;
+        final Object? normalized = _canonical(value[key], key);
+        if (_isEmptyOptional(normalized)) continue;
+        result[key] = normalized;
+      }
+      return result;
     }
     if (value is List<Object?>) {
-      return value.map(_canonical).toList(growable: false);
+      return value
+          .map((Object? item) => _canonical(item, parentKey))
+          .toList(growable: false);
     }
+    if (value is String) {
+      final String trimmed = value.trim();
+      if (trimmed.isEmpty && _emptyStringMeansUnset.contains(parentKey)) {
+        return null;
+      }
+      if (_caseInsensitiveKeys.contains(parentKey)) {
+        return trimmed.toLowerCase();
+      }
+      if (parentKey == 'server') {
+        final InternetAddress? address = InternetAddress.tryParse(trimmed);
+        return address == null
+            ? trimmed.toLowerCase()
+            : _canonicalIpAddress(address);
+      }
+      return trimmed;
+    }
+    if (value == false && _falseMeansUnset.contains(parentKey)) return null;
+    if (value == 0 && _zeroMeansUnset.contains(parentKey)) return null;
     return value;
+  }
+
+  static const Set<String> _caseInsensitiveKeys = <String>{
+    'type',
+    'method',
+    'security',
+    'server_name',
+    'fingerprint',
+    'flow',
+    'congestion_control',
+    'udp_relay_mode',
+  };
+
+  static const Set<String> _emptyStringMeansUnset = <String>{
+    'flow',
+    'server_name',
+    'service_name',
+    'congestion_control',
+    'udp_relay_mode',
+    'plugin',
+    'plugin_opts',
+  };
+
+  static const Set<String> _falseMeansUnset = <String>{'insecure', 'multiplex'};
+
+  static const Set<String> _zeroMeansUnset = <String>{
+    'alter_id',
+    'max_early_data',
+  };
+
+  static bool _isEmptyOptional(Object? value) {
+    if (value == null) return true;
+    if (value is Map && value.isEmpty) return true;
+    if (value is List && value.isEmpty) return true;
+    return false;
+  }
+
+  static String _canonicalIpAddress(InternetAddress address) {
+    final List<int> bytes = address.rawAddress;
+    if (address.type == InternetAddressType.IPv4) return bytes.join('.');
+    final List<int> groups = <int>[
+      for (int index = 0; index < bytes.length; index += 2)
+        (bytes[index] << 8) | bytes[index + 1],
+    ];
+    int bestStart = -1;
+    int bestLength = 0;
+    for (int index = 0; index < groups.length;) {
+      if (groups[index] != 0) {
+        index += 1;
+        continue;
+      }
+      final int start = index;
+      while (index < groups.length && groups[index] == 0) {
+        index += 1;
+      }
+      final int length = index - start;
+      if (length >= 2 && length > bestLength) {
+        bestStart = start;
+        bestLength = length;
+      }
+    }
+    if (bestStart < 0) {
+      return groups.map((int group) => group.toRadixString(16)).join(':');
+    }
+    final String left = groups
+        .take(bestStart)
+        .map((int group) => group.toRadixString(16))
+        .join(':');
+    final String right = groups
+        .skip(bestStart + bestLength)
+        .map((int group) => group.toRadixString(16))
+        .join(':');
+    return '$left::$right';
   }
 
   static Object? _plain(Object? value) {
@@ -932,9 +1058,9 @@ class ImportService {
   }
 
   static String _displayName(Map<String, Object?> value, int index) {
-    return _text(value['name']).ifEmpty(
-      _text(value['tag']).ifEmpty('第 ${index + 1} 项'),
-    );
+    return _text(
+      value['name'],
+    ).ifEmpty(_text(value['tag']).ifEmpty('第 ${index + 1} 项'));
   }
 
   static int? _integer(Object? value) {
@@ -963,8 +1089,14 @@ class ImportService {
   }
 
   static int _defaultPort(String scheme) {
-    return <String>{'https', 'trojan', 'vless', 'vmess', 'tuic', 'anytls'}
-            .contains(scheme)
+    return <String>{
+          'https',
+          'trojan',
+          'vless',
+          'vmess',
+          'tuic',
+          'anytls',
+        }.contains(scheme)
         ? 443
         : 1080;
   }
@@ -1022,10 +1154,7 @@ class _ShareParseResult {
 }
 
 class _LinkExtraction {
-  const _LinkExtraction({
-    required this.links,
-    required this.filteredNoise,
-  });
+  const _LinkExtraction({required this.links, required this.filteredNoise});
 
   final List<String> links;
   final int filteredNoise;

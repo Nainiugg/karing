@@ -24,18 +24,15 @@ class PageHeader extends StatelessWidget {
               Text(
                 title,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 6),
               Text(description, style: Theme.of(context).textTheme.bodyLarge),
             ],
           ),
         ),
-        if (trailing != null) ...<Widget>[
-          const SizedBox(width: 16),
-          trailing!,
-        ],
+        if (trailing != null) ...<Widget>[const SizedBox(width: 16), trailing!],
       ],
     );
   }

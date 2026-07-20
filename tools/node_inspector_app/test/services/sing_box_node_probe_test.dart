@@ -25,11 +25,9 @@ void main() {
       importedAt: DateTime.utc(2026),
     );
     final Map<String, Object?> config =
-        SingBoxNodeProbe.buildConfigurationForTesting(
-      node,
-      <NodeRecord>[node],
-      bindAddress: '127.0.0.1',
-    );
+        SingBoxNodeProbe.buildConfigurationForTesting(node, <NodeRecord>[
+          node,
+        ], bindAddress: '127.0.0.1');
     final Directory directory = await Directory.systemTemp.createTemp(
       'node-inspector-core-schema-',
     );

@@ -3,6 +3,7 @@ name: Node Inspector Windows
 on:
   push:
     branches:
+      - main
       - feature/node-inspector-app
     paths:
       - tools/node_inspector_app/**
@@ -62,7 +63,7 @@ jobs:
       - name: Upload Windows application
         uses: actions/upload-artifact@v7
         with:
-          name: node-inspector-windows
+          name: node-inspector-windows-v0.6.1
           path: tools/node_inspector_app/build/windows/x64/runner/Release/**
           if-no-files-found: error
           retention-days: 14

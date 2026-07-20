@@ -23,7 +23,8 @@ class NodeTestResult {
 
   factory NodeTestResult.fromJson(Map<String, Object?> json) {
     return NodeTestResult(
-      checkedAt: DateTime.tryParse(json['checkedAt'] as String? ?? '') ??
+      checkedAt:
+          DateTime.tryParse(json['checkedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       exitIp: json['exitIp'] as String?,
       countryCode: json['countryCode'] as String?,
