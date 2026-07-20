@@ -1,4 +1,4 @@
-# Node Inspector v0.6.1
+# Node Inspector v0.6.2
 
 > 为 Karing 用户准备的独立节点整理、隔离检测与配置导出工具。
 
@@ -37,7 +37,7 @@ Node Inspector 是 `Nainiugg/karing` 仓库中的实验性独立 Windows 应用�
 
 ## 节点去重规则
 
-v0.6.1 使用版本化 SHA-256 连接指纹进行去重，覆盖：
+Node Inspector 使用版本化 SHA-256 连接指纹进行去重，覆盖：
 
 1. 同一次批量导入中的重复项；
 2. 新导入内容与当前工作区已有节点；
@@ -62,7 +62,7 @@ v0.6.1 使用版本化 SHA-256 连接指纹进行去重，覆盖：
 Windows 成品由 GitHub Actions 在 `windows-2022` 环境中构建。进入本分支对应 PR 的 Actions 检查，下载名为：
 
 ```text
-node-inspector-windows-v0.6.1
+node-inspector-windows-v0.6.2
 ```
 
 的 artifact，完整解压后双击：
@@ -125,6 +125,6 @@ tools\node_inspector_app\build\windows\x64\runner\Release
 - 项目仓库：<https://github.com/Nainiugg/karing>
 - Node Inspector 分支：<https://github.com/Nainiugg/karing/tree/agent/node-inspector-v0.6.1-build>
 - Windows 构建 PR：<https://github.com/Nainiugg/karing/pull/1>
-- 当前应用版本：`0.6.1+7`
+- 当前应用版本：`0.6.2+8`
 - 隔离检测核心：sing-box `1.13.14`
 - 许可证：GNU General Public License v3.0；随应用分发的第三方核心保留其自身许可证。

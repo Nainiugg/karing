@@ -393,7 +393,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text('版本 0.6.1 · 稳定去重、双栈出口、节点详情与安全报告'),
+                      const Text('版本 0.6.2 · 透明界面、稳定去重、双栈出口与安全报告'),
                       const SizedBox(height: 4),
                       const Text('隔离核心：sing-box 1.13.14，运行时进行 SHA-256 校验。'),
                       const SizedBox(height: 4),

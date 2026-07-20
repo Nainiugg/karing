@@ -77,12 +77,12 @@ class ShellScreen extends StatelessWidget {
                   appBar: AppBar(
                     title: const Text('Node Inspector'),
                     centerTitle: false,
-                    backgroundColor: const Color(0xEAF7FAF8),
+                    backgroundColor: Colors.transparent,
                     surfaceTintColor: Colors.transparent,
                   ),
                   body: content,
                   bottomNavigationBar: NavigationBar(
-                    backgroundColor: const Color(0xEAF7FAF8),
+                    backgroundColor: Colors.transparent,
                     selectedIndex: controller.pageIndex,
                     onDestinationSelected: controller.selectPage,
                     destinations: _destinations,
@@ -98,7 +98,7 @@ class ShellScreen extends StatelessWidget {
                   children: <Widget>[
                     SafeArea(
                       child: NavigationRail(
-                        backgroundColor: const Color(0xE6F7FAF8),
+                        backgroundColor: Colors.transparent,
                         extended: constraints.maxWidth >= 1180,
                         selectedIndex: controller.pageIndex,
                         onDestinationSelected: controller.selectPage,

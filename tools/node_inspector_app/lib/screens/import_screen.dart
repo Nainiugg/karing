@@ -230,8 +230,8 @@ class _ImportScreenState extends State<ImportScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              Card(
-                color: Theme.of(context).colorScheme.secondaryContainer,
+              const Card(
+                color: Colors.transparent,
                 child: const Padding(
                   padding: EdgeInsets.all(18),
                   child: Row(

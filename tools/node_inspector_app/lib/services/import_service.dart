@@ -61,7 +61,7 @@ class ImportService {
     final HttpClient client = HttpClient()
       ..connectionTimeout = timeout
       ..idleTimeout = timeout
-      ..userAgent = 'NodeInspector/0.6.1';
+      ..userAgent = 'NodeInspector/0.6.2';
     try {
       final HttpClientRequest request = await client
           .getUrl(uri)

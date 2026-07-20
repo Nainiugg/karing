@@ -91,7 +91,7 @@ class _NodeDetailsScreenState extends State<NodeDetailsScreen> {
             backgroundColor: Colors.transparent,
             appBar: AppBar(
               title: const Text('节点详细检测'),
-              backgroundColor: const Color(0xEAF7FAF8),
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
             ),
             body: node == null
@@ -292,7 +292,7 @@ class _DetailsBody extends StatelessWidget {
               if (inspection?.warnings.isNotEmpty == true) ...<Widget>[
                 const SizedBox(height: 16),
                 Card(
-                  color: const Color(0xF2FFF3DF),
+                  color: Colors.transparent,
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(

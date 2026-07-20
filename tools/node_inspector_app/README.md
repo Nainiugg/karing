@@ -2,7 +2,7 @@
 
 Node Inspector 是一个独立的 Windows Flutter 应用，用于把来源混杂的代理节点导入、隔离检测，并导出可供 Karing 使用的 sing-box JSON 配置。
 
-当前版本：`0.6.1`。在多格式导入、真实出口检测、自动重命名和 Karing 配置导出的基础上，新增稳定的跨格式、跨批次和旧工作区节点去重，并保留有效节点详情、IPv4/IPv6 双栈出口、IP 情报、参考纯净度、出口轮换历史和安全报告。
+当前版本：`0.6.2`。在多格式导入、真实出口检测、自动重命名、Karing 配置导出和稳定去重的基础上，界面模块改为透明背景并保留文字与边框，让用户背景图完整可见。
 
 ![Node Inspector 背景](assets/background/app_background.jpg)
 

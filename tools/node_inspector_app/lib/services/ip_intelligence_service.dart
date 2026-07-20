@@ -286,7 +286,7 @@ class PublicIpIntelligenceService implements IpIntelligenceService {
       headers.forEach(
         (String name, String value) => request.headers.set(name, value),
       );
-      request.headers.set(HttpHeaders.userAgentHeader, 'NodeInspector/0.6.1');
+      request.headers.set(HttpHeaders.userAgentHeader, 'NodeInspector/0.6.2');
       final HttpClientResponse response = await request.close().timeout(
         const Duration(seconds: 12),
       );

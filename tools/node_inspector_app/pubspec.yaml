@@ -1,7 +1,7 @@
 name: node_inspector_app
 description: A standalone node import, inspection, rename, and Karing export application.
 publish_to: "none"
-version: 0.6.1+7
+version: 0.6.2+8
 
 environment:
   sdk: ">=3.9.0 <4.0.0"
